@@ -1,7 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0+ */
 /*
  * Copyright (C) 2014, Barco (www.barco.com)
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #ifndef __PLATINUM_CONFIG_H__
@@ -66,7 +65,6 @@
 #ifdef CONFIG_CMD_NAND
 
 /* NAND config */
-#define CONFIG_NAND_MXS
 #ifndef CONFIG_SYS_NAND_MAX_CHIPS
 #define CONFIG_SYS_NAND_MAX_CHIPS		2
 #endif
@@ -76,9 +74,6 @@
 #define CONFIG_SYS_NAND_ONFI_DETECTION
 
 /* DMA config, needed for GPMI/MXS NAND support */
-#define CONFIG_APBH_DMA
-#define CONFIG_APBH_DMA_BURST
-#define CONFIG_APBH_DMA_BURST8
 
 /* Environment in NAND */
 #define CONFIG_ENV_OFFSET		(16 << 20)
@@ -116,18 +111,6 @@
 #define CONFIG_MTD_DEVICE
 #define CONFIG_MTD_PARTITIONS
 
-#if (CONFIG_SYS_NAND_MAX_CHIPS == 1)
-#define MTDIDS_DEFAULT		"nand0=gpmi-nand"
-#define MTDPARTS_DEFAULT	"mtdparts=gpmi-nand:14M(spl),2M(uboot)," \
-				"512k(env1),512k(env2),-(ubi)"
-#elif (CONFIG_SYS_NAND_MAX_CHIPS == 2)
-#define MTDIDS_DEFAULT		"nand0=gpmi-nand"
-#define MTDPARTS_DEFAULT	"mtdparts=gpmi-nand:14M(spl),2M(uboot)," \
-				"512k(env1),512k(env2),495M(ubi0)," \
-				"14M(res0),2M(res1)," \
-				"512k(res2),512k(res3),-(ubi1)"
-#endif
-
 /*
  * Environment configuration
  */
@@ -155,8 +138,8 @@
 	"baudrate=115200\0"						\
 	"boot_scr=boot.uboot\0"						\
 	"boot_vol=0\0"							\
-	"mtdids="MTDIDS_DEFAULT"\0"					\
-	"mtdparts="MTDPARTS_DEFAULT"\0"					\
+	"mtdids="CONFIG_MTDIDS_DEFAULT"\0"					\
+	"mtdparts="CONFIG_MTDPARTS_DEFAULT"\0"					\
 	"mmcfs=ext2\0"							\
 	"mmcrootpart=1\0"						\
 	\

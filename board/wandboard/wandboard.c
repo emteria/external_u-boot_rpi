@@ -1,10 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (C) 2013 Freescale Semiconductor, Inc.
  * Copyright (C) 2014 O.S. Systems Software LTDA.
  *
  * Author: Fabio Estevam <fabio.estevam@freescale.com>
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #include <asm/arch/clock.h>
@@ -28,7 +27,6 @@
 #include <miiphy.h>
 #include <netdev.h>
 #include <phy.h>
-#include <input.h>
 #include <i2c.h>
 #include <power/pmic.h>
 #include <power/pfuze100_pmic.h>
@@ -435,9 +433,7 @@ int board_early_init_f(void)
 {
 	setup_iomux_uart();
 #ifdef CONFIG_SATA
-	/* Only mx6q wandboard has SATA */
-	if (is_cpu_type(MXC_CPU_MX6Q))
-		setup_sata();
+	setup_sata();
 #endif
 
 	return 0;
@@ -512,7 +508,9 @@ int board_late_init(void)
 #endif
 
 #ifdef CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG
-	if (is_mx6dq())
+	if (is_mx6dqp())
+		env_set("board_rev", "MX6QP");
+	else if (is_mx6dq())
 		env_set("board_rev", "MX6Q");
 	else
 		env_set("board_rev", "MX6DL");
@@ -534,7 +532,7 @@ int board_init(void)
 
 #if defined(CONFIG_VIDEO_IPUV3)
 	setup_i2c(1, CONFIG_SYS_I2C_SPEED, 0x7f, &mx6dl_i2c2_pad_info);
-	if (is_mx6dq()) {
+	if (is_mx6dq() || is_mx6dqp()) {
 		setup_i2c(1, CONFIG_SYS_I2C_SPEED, 0x7f, &mx6q_i2c2_pad_info);
 		setup_i2c(2, CONFIG_SYS_I2C_SPEED, 0x7f, &mx6q_i2c3_pad_info);
 	} else {

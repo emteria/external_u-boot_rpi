@@ -1,11 +1,10 @@
+/* SPDX-License-Identifier: GPL-2.0+ */
 /*
  * (C) Copyright 2011, Stefano Babic <sbabic@denx.de>
  *
  * (C) Copyright 2008-2010 Freescale Semiconductor, Inc.
  *
  * Configuration for the woodburn board.
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #ifndef __WOODBURN_COMMON_CONFIG_H
@@ -43,8 +42,6 @@
 #define CONFIG_SYS_I2C_MXC_I2C2		/* enable I2C bus 2 */
 #define CONFIG_SYS_I2C_MXC_I2C3		/* enable I2C bus 3 */
 #define CONFIG_SYS_SPD_BUS_NUM		0
-#define CONFIG_MXC_SPI
-#define CONFIG_MXC_GPIO
 
 /* PMIC Controller */
 #define CONFIG_POWER
@@ -55,7 +52,6 @@
 #define CONFIG_RTC_MC13XXX
 
 /* mmc driver */
-#define CONFIG_FSL_ESDHC
 #define CONFIG_SYS_FSL_ESDHC_ADDR	0
 #define CONFIG_SYS_FSL_ESDHC_NUM	1
 
@@ -67,16 +63,10 @@
 
 /* allow to overwrite serial and ethaddr */
 #define CONFIG_ENV_OVERWRITE
-#define CONFIG_CONS_INDEX	1
 
 /*
  * Command definition
  */
-#define CONFIG_BOOTP_SUBNETMASK
-#define CONFIG_BOOTP_GATEWAY
-#define CONFIG_BOOTP_DNS
-
-#define CONFIG_MXC_GPIO
 
 #define CONFIG_NET_RETRY_COUNT	100
 
@@ -98,10 +88,6 @@
 /*
  * Miscellaneous configurable options
  */
-#define CONFIG_SYS_LONGHELP	/* undef to save memory */
-#define CONFIG_CMDLINE_EDITING
-
-#define CONFIG_AUTO_COMPLETE
 
 #define CONFIG_SYS_MEMTEST_START	0	/* memtest works on */
 #define CONFIG_SYS_MEMTEST_END		0x10000
@@ -129,14 +115,6 @@
 #define CONFIG_MTD_DEVICE
 #define CONFIG_FLASH_CFI_MTD
 #define CONFIG_MTD_PARTITIONS
-#define MTDIDS_DEFAULT		"nand0=mxc_nand,nor0=physmap-flash.0"
-#define MTDPARTS_DEFAULT	"mtdparts=mxc_nand:50m(root1)," \
-				"32m(rootfb)," \
-				"64m(pcache)," \
-				"64m(app1)," \
-				"10m(app2),-(spool);" \
-				"physmap-flash.0:512k(u-boot),64k(env1)," \
-				"64k(env2),3776k(kernel1),3776k(kernel2)"
 
 /*
  * FLASH and environment organization
@@ -171,7 +149,6 @@
 /*
  * NAND FLASH driver setup
  */
-#define CONFIG_NAND_MXC
 #define CONFIG_NAND_MXC_V1_1
 #define CONFIG_MXC_NAND_REGS_BASE	(NFC_BASE_ADDR)
 #define CONFIG_SYS_MAX_NAND_DEVICE	1
@@ -179,10 +156,6 @@
 #define CONFIG_MXC_NAND_HWECC
 #define CONFIG_SYS_NAND_LARGEPAGE
 
-#if 0
-#define CONFIG_MTD_DEBUG
-#define CONFIG_MTD_DEBUG_VERBOSE	7
-#endif
 #define CONFIG_SYS_NAND_ONFI_DETECTION
 
 /*
@@ -190,7 +163,7 @@
  * to update uboot and load kernel
  */
 
-#define CONFIG_HOSTNAME woodburn
+#define CONFIG_HOSTNAME "woodburn"
 #define	CONFIG_EXTRA_ENV_SETTINGS					\
 	"netdev=eth0\0"							\
 	"nfsargs=setenv bootargs root=/dev/nfs rw "			\
@@ -208,9 +181,9 @@
 	"addmisc=setenv bootargs ${bootargs} ${misc}\0"			\
 	"loadaddr=80800000\0"						\
 	"kernel_addr_r=80800000\0"					\
-	"hostname=" __stringify(CONFIG_HOSTNAME) "\0"			\
-	"bootfile=" __stringify(CONFIG_HOSTNAME) "/uImage\0"		\
-	"ramdisk_file=" __stringify(CONFIG_HOSTNAME) "/uRamdisk\0"	\
+	"hostname=" CONFIG_HOSTNAME "\0"			\
+	"bootfile=" CONFIG_HOSTNAME "/uImage\0"		\
+	"ramdisk_file=" CONFIG_HOSTNAME "/uRamdisk\0"	\
 	"flash_self=run ramargs addip addtty addmtd addmisc;"		\
 		"bootm ${kernel_addr} ${ramdisk_addr}\0"		\
 	"flash_nfs=run nfsargs addip addtty addmtd addmisc;"		\
@@ -224,7 +197,7 @@
 		"run ramargs addip addtty addmtd addmisc;"		\
 		"bootm ${kernel_addr_r} ${ramdisk_addr_r};"		\
 		"else echo Images not loades;fi\0"			\
-	"u-boot=" __stringify(CONFIG_HOSTNAME) "/u-boot.bin\0"		\
+	"u-boot=" CONFIG_HOSTNAME "/u-boot.bin\0"		\
 	"load=tftp ${loadaddr} ${u-boot}\0"				\
 	"uboot_addr=" __stringify(CONFIG_SYS_MONITOR_BASE) "\0"		\
 	"update=protect off ${uboot_addr} +80000;"			\

@@ -1,9 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * DHCOM DH-iMX6 PDK board support
  *
  * Copyright (C) 2017 Marek Vasut <marex@denx.de>
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #include <common.h>
@@ -19,6 +18,7 @@
 #include <asm/mach-imx/iomux-v3.h>
 #include <asm/mach-imx/mxc_i2c.h>
 #include <asm/mach-imx/sata.h>
+#include <environment.h>
 #include <errno.h>
 #include <fsl_esdhc.h>
 #include <fuse.h>
@@ -253,16 +253,10 @@ static void setup_usb(void)
 
 int board_usb_phy_mode(int port)
 {
-	return USB_INIT_HOST;
-}
-
-/* Use only Port 1 == DHCOM USB Host 1 */
-int board_ehci_hcd_init(int port)
-{
 	if (port == 1)
-		return 0;
+		return USB_INIT_HOST;
 	else
-		return -ENODEV;
+		return USB_INIT_DEVICE;
 }
 
 int board_ehci_power(int port, int on)

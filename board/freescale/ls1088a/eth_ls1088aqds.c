@@ -1,16 +1,17 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright 2017 NXP
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #include <common.h>
+#include <command.h>
 #include <netdev.h>
 #include <asm/io.h>
 #include <asm/arch/fsl_serdes.h>
 #include <hwconfig.h>
 #include <fsl_mdio.h>
 #include <malloc.h>
+#include <phy.h>
 #include <fm_eth.h>
 #include <i2c.h>
 #include <miiphy.h>
@@ -634,6 +635,7 @@ int board_eth_init(bd_t *bis)
 	for (i = WRIOP1_DPMAC1; i < NUM_WRIOP_PORTS; i++) {
 		switch (wriop_get_enet_if(i)) {
 		case PHY_INTERFACE_MODE_RGMII:
+		case PHY_INTERFACE_MODE_RGMII_ID:
 			ls1088a_handle_phy_interface_rgmii(i);
 			break;
 		case PHY_INTERFACE_MODE_QSGMII:

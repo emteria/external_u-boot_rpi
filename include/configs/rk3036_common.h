@@ -1,7 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0+ */
 /*
  * (C) Copyright 2015 Rockchip Electronics Co., Ltd
- *
- * SPDX-License-Identifier:     GPL-2.0+
  */
 #ifndef __CONFIG_RK3036_COMMON_H
 #define __CONFIG_RK3036_COMMON_H
@@ -10,7 +9,6 @@
 #include "rockchip-common.h"
 
 #define CONFIG_NR_DRAM_BANKS		1
-#define CONFIG_ENV_SIZE			0x2000
 #define CONFIG_SYS_MALLOC_LEN		(32 << 20)
 #define CONFIG_SYS_CBSIZE		1024
 #define CONFIG_SKIP_LOWLEVEL_INIT
@@ -19,14 +17,10 @@
 #define CONFIG_SYS_TIMER_BASE		0x200440a0 /* TIMER5 */
 #define CONFIG_SYS_TIMER_COUNTER	(CONFIG_SYS_TIMER_BASE + 8)
 
-#define CONFIG_SYS_NS16550
-#define CONFIG_SYS_NS16550_MEM32
-
-#define CONFIG_SYS_TEXT_BASE		0x60000000
 #define CONFIG_SYS_INIT_SP_ADDR		0x60100000
 #define CONFIG_SYS_LOAD_ADDR		0x60800800
 #define CONFIG_SPL_STACK		0x10081fff
-#define CONFIG_SPL_TEXT_BASE		0x10081004
+#define CONFIG_SPL_TEXT_BASE		0x10081000
 
 #define CONFIG_ROCKCHIP_MAX_INIT_SIZE	(4 << 10)
 #define CONFIG_ROCKCHIP_CHIP_TAG	"RK30"
@@ -40,7 +34,6 @@
 #define SDRAM_MAX_SIZE                  (CONFIG_NR_DRAM_BANKS * SDRAM_BANK_SIZE)
 
 #define CONFIG_SPI_FLASH
-#define CONFIG_SPI
 #define CONFIG_SPI_FLASH_GIGADEVICE
 #define CONFIG_SF_DEFAULT_SPEED 20000000
 
@@ -48,7 +41,6 @@
 /* usb otg */
 
 /* usb mass storage */
-#define CONFIG_USB_FUNCTION_MASS_STORAGE
 #define CONFIG_CMD_USB_MASS_STORAGE
 
 /* usb host */

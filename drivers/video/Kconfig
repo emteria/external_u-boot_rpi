@@ -156,6 +156,15 @@ config VIDEO_COREBOOT
 	  coreboot already. This can in principle be used with any platform
 	  that coreboot supports.
 
+config VIDEO_EFI
+	bool "Enable EFI framebuffer driver support"
+	depends on EFI_STUB
+	help
+	  Turn on this option to enable a framebuffeer driver when U-Boot is
+	  loaded as a payload (see README.u-boot_on_efi) by an EFI BIOS where
+	  the graphics device is configured by the EFI BIOS already. This can
+	  in principle be used with any platform that has an EFI BIOS.
+
 config VIDEO_VESA
 	bool "Enable VESA video driver support"
 	default n
@@ -174,7 +183,7 @@ config FRAMEBUFFER_SET_VESA_MODE
 
 choice
 	prompt "framebuffer graphics resolution"
-	default FRAMEBUFFER_VESA_MODE_117
+	default FRAMEBUFFER_VESA_MODE_118
 	depends on FRAMEBUFFER_SET_VESA_MODE
 	help
 	  This option sets the resolution used for the U-Boot framebuffer (and
@@ -649,5 +658,13 @@ config VIDEO_SIMPLE
 	  This driver assumes that the display hardware has been initialized
 	  before u-boot starts, and u-boot will simply render to the pre-
 	  allocated frame buffer surface.
+
+config VIDEO_DT_SIMPLEFB
+	bool "Enable SimpleFB support for passing framebuffer to OS"
+	help
+	  Enables the code to pass the framebuffer to the kernel as a
+	  simple framebuffer in the device tree.
+	  The video output is initialized by U-Boot, and kept by the
+	  kernel.
 
 endmenu

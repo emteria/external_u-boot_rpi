@@ -1,7 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
- * (C) Copyright 2017 Patrice Chotard <patrice.chotard@st.com>
- *
- * SPDX-License-Identifier:	GPL-2.0+
+ * Copyright (C) 2017, STMicroelectronics - All Rights Reserved
+ * Author(s): Patrice Chotard, <patrice.chotard@st.com> for STMicroelectronics.
  */
 
 #include <common.h>
@@ -58,7 +58,7 @@ static int sti_sysreset_probe(struct udevice *dev)
 		return -ENODEV;
 	}
 
-	priv->base = regmap->base;
+	priv->base = regmap->ranges[0].start;
 
 	return 0;
 }
