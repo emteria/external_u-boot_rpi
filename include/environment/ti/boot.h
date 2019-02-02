@@ -23,6 +23,18 @@
 #define VBMETA_PART			""
 #endif
 
+#if defined(CONFIG_CMD_AB_SELECT)
+#define COMMON_PARTS \
+	"name=boot_a,size=10M,uuid=${uuid_gpt_boot_a};" \
+	"name=boot_b,size=10M,uuid=${uuid_gpt_boot_b};" \
+	"name=system_a,size=1024M,uuid=${uuid_gpt_system_a};" \
+	"name=system_b,size=1024M,uuid=${uuid_gpt_system_b};"
+#else
+#define COMMON_PARTS \
+	"name=boot,size=10M,uuid=${uuid_gpt_boot};" \
+	"name=system,size=1024M,uuid=${uuid_gpt_system};"
+#endif
+
 #ifndef PARTS_DEFAULT
 /* Define the default GPT table for eMMC */
 #define PARTS_DEFAULT \
@@ -34,19 +46,12 @@
 	"partitions_android=" \
 	"uuid_disk=${uuid_gpt_disk};" \
 	"name=xloader,start=128K,size=256K,uuid=${uuid_gpt_xloader};" \
-	"name=bootloader,size=1792K,uuid=${uuid_gpt_bootloader};" \
-	"name=environment,size=128K,uuid=${uuid_gpt_environment};" \
+	"name=bootloader,size=2048K,uuid=${uuid_gpt_bootloader};" \
+	"name=uboot-env,start=2432K,size=256K,uuid=${uuid_gpt_reserved};" \
 	"name=misc,size=128K,uuid=${uuid_gpt_misc};" \
-	"name=reserved,size=256K,uuid=${uuid_gpt_reserved};" \
-	"name=efs,size=16M,uuid=${uuid_gpt_efs};" \
-	"name=crypto,size=16K,uuid=${uuid_gpt_crypto};" \
 	"name=recovery,size=40M,uuid=${uuid_gpt_recovery};" \
-	"name=boot,size=10M,uuid=${uuid_gpt_boot};" \
-	"name=system,size=768M,uuid=${uuid_gpt_system};" \
+	COMMON_PARTS \
 	"name=vendor,size=256M,uuid=${uuid_gpt_vendor};" \
-	"name=cache,size=256M,uuid=${uuid_gpt_cache};" \
-	"name=ipu1,size=1M,uuid=${uuid_gpt_ipu1};" \
-	"name=ipu2,size=1M,uuid=${uuid_gpt_ipu2};" \
 	VBMETA_PART \
 	"name=userdata,size=-,uuid=${uuid_gpt_userdata}"
 #endif /* PARTS_DEFAULT */
@@ -62,6 +67,35 @@
 #else
 #define AVB_VERIFY_CHECK ""
 #define AVB_VERIFY_CMD ""
+#endif
+
+#define CONTROL_PARTITION "misc"
+
+#if defined(CONFIG_CMD_AB_SELECT)
+#define AB_SELECT \
+	"if part number mmc 1 " CONTROL_PARTITION " control_part_number; " \
+	"then " \
+		"echo " CONTROL_PARTITION \
+			" partition number:${control_part_number};" \
+		"ab_select slot_name mmc ${mmcdev}:${control_part_number};" \
+	"else " \
+		"echo " CONTROL_PARTITION " partition not found;" \
+		"exit;" \
+	"fi;" \
+	"setenv slot_suffix _${slot_name};" \
+	"if part number mmc ${mmcdev} system${slot_suffix} " \
+	"system_part_number; then " \
+		"setenv bootargs_ab " \
+			"ro root=/dev/mmcblk${mmcdev}p${system_part_number} " \
+			"rootwait init=/init skip_initramfs " \
+			"androidboot.slot_suffix=${slot_suffix};" \
+		"echo A/B cmdline addition: ${bootargs_ab};" \
+		"setenv bootargs ${bootargs} ${bootargs_ab};" \
+	"else " \
+		"echo system${slot_suffix} partition not found;" \
+	"fi;"
+#else
+#define AB_SELECT ""
 #endif
 
 #define DEFAULT_COMMON_BOOT_TI_ARGS \
@@ -92,13 +126,16 @@
 		"mmc dev $mmcdev; " \
 		"mmc rescan; " \
 		AVB_VERIFY_CHECK \
-		"part start mmc ${mmcdev} environment fdt_start; " \
-		"part size mmc ${mmcdev} environment fdt_size; " \
-		"part start mmc ${mmcdev} boot boot_start; " \
-		"part size mmc ${mmcdev} boot boot_size; " \
-		"mmc read ${fdtaddr} ${fdt_start} ${fdt_size}; " \
-		"mmc read ${loadaddr} ${boot_start} ${boot_size}; " \
-		"bootm ${loadaddr}#${fdtfile};\0 "
+		AB_SELECT \
+		"if part start mmc ${mmcdev} boot${slot_suffix} boot_start; " \
+		"then " \
+			"part size mmc ${mmcdev} boot${slot_suffix} " \
+				"boot_size; " \
+			"mmc read ${loadaddr} ${boot_start} ${boot_size}; " \
+			"bootm ${loadaddr}#${fdtfile}; " \
+		"else " \
+			"echo boot${slot_suffix} partition not found; " \
+		"fi;\0"
 
 #ifdef CONFIG_OMAP54XX
 
@@ -129,7 +166,7 @@
 		"if test $board_name = am57xx_evm; then " \
 			"setenv fdtfile am57xx-beagle-x15.dtb; fi;" \
 		"if test $board_name = am57xx_evm_reva3; then " \
-			"setenv fdtfile am57xx-beagle-x15.dtb; fi;" \
+			"setenv fdtfile am57xx-evm-reva3.dtb; fi;" \
 		"if test $board_name = am571x_idk; then " \
 			"setenv fdtfile am571x-idk.dtb; fi;" \
 		"if test $fdtfile = undefined; then " \

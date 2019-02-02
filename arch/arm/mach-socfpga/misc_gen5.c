@@ -35,6 +35,26 @@ static struct scu_registers *scu_regs =
 	(struct scu_registers *)SOCFPGA_MPUSCU_ADDRESS;
 
 /*
+ * FPGA programming support for SoC FPGA Cyclone V
+ */
+static Altera_desc altera_fpga[] = {
+	{
+		/* Family */
+		Altera_SoCFPGA,
+		/* Interface type */
+		fast_passive_parallel,
+		/* No limitation as additional data will be ignored */
+		-1,
+		/* No device function table */
+		NULL,
+		/* Base interface address specified in driver */
+		NULL,
+		/* No cookie implementation */
+		0
+	},
+};
+
+/*
  * DesignWare Ethernet initialization
  */
 #ifdef CONFIG_ETH_DESIGNWARE
@@ -175,6 +195,29 @@ static void socfpga_nic301_slave_ns(void)
 	writel(0x1, &nic301_regs->sdrdata);
 }
 
+void socfpga_sdram_remap_zero(void)
+{
+	u32 remap;
+
+	socfpga_nic301_slave_ns();
+
+	/*
+	 * Private components security:
+	 * U-Boot : configure private timer, global timer and cpu component
+	 * access as non secure for kernel stage (as required by Linux)
+	 */
+	setbits_le32(&scu_regs->sacr, 0xfff);
+
+	/* Configure the L2 controller to make SDRAM start at 0 */
+	remap = 0x1; /* remap.mpuzero */
+	/* Keep fpga bridge enabled when running from FPGA onchip RAM */
+	if (socfpga_is_booting_from_fpga())
+		remap |= 0x8; /* remap.hps2fpga */
+	writel(remap, &nic301_regs->remap);
+
+	writel(0x1, &pl310->pl310_addr_filter_start);
+}
+
 static u32 iswgrp_handoff[8];
 
 int arch_early_init_r(void)
@@ -195,21 +238,10 @@ int arch_early_init_r(void)
 
 	socfpga_bridges_reset(1);
 
-	socfpga_nic301_slave_ns();
-
-	/*
-	 * Private components security:
-	 * U-Boot : configure private timer, global timer and cpu component
-	 * access as non secure for kernel stage (as required by Linux)
-	 */
-	setbits_le32(&scu_regs->sacr, 0xfff);
-
-	/* Configure the L2 controller to make SDRAM start at 0 */
-	writel(0x1, &nic301_regs->remap);	/* remap.mpuzero */
-	writel(0x1, &pl310->pl310_addr_filter_start);
+	socfpga_sdram_remap_zero();
 
 	/* Add device descriptor to FPGA device table */
-	socfpga_fpga_add();
+	socfpga_fpga_add(&altera_fpga[0]);
 
 #ifdef CONFIG_DESIGNWARE_SPI
 	/* Get Designware SPI controller out of reset */
@@ -259,40 +291,20 @@ static void socfpga_sdram_apply_static_cfg(void)
 	: : "r"(val), "r"(&sdr_ctrl->static_cfg) : "memory", "cc");
 }
 
-static int do_bridge(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+void do_bridge_reset(int enable)
 {
-	if (argc != 2)
-		return CMD_RET_USAGE;
-
-	argv++;
-
-	switch (*argv[0]) {
-	case 'e':	/* Enable */
+	if (enable) {
 		writel(iswgrp_handoff[2], &sysmgr_regs->fpgaintfgrp_module);
 		socfpga_sdram_apply_static_cfg();
 		writel(iswgrp_handoff[3], &sdr_ctrl->fpgaport_rst);
 		writel(iswgrp_handoff[0], &reset_manager_base->brg_mod_reset);
 		writel(iswgrp_handoff[1], &nic301_regs->remap);
-		break;
-	case 'd':	/* Disable */
+	} else {
 		writel(0, &sysmgr_regs->fpgaintfgrp_module);
 		writel(0, &sdr_ctrl->fpgaport_rst);
 		socfpga_sdram_apply_static_cfg();
 		writel(0, &reset_manager_base->brg_mod_reset);
 		writel(1, &nic301_regs->remap);
-		break;
-	default:
-		return CMD_RET_USAGE;
 	}
-
-	return 0;
 }
-
-U_BOOT_CMD(
-	bridge, 2, 1, do_bridge,
-	"SoCFPGA HPS FPGA bridge control",
-	"enable  - Enable HPS-to-FPGA, FPGA-to-HPS, LWHPS-to-FPGA bridges\n"
-	"bridge disable - Enable HPS-to-FPGA, FPGA-to-HPS, LWHPS-to-FPGA bridges\n"
-	""
-);
 #endif
