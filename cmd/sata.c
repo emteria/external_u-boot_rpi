@@ -26,6 +26,8 @@ int sata_remove(int devnum)
 	struct udevice *dev;
 	int rc;
 
+	blk_unbind_all(IF_TYPE_SATA);
+
 	rc = uclass_find_device(UCLASS_AHCI, devnum, &dev);
 	if (!rc && !dev)
 		rc = uclass_find_first_device(UCLASS_AHCI, &dev);
@@ -58,6 +60,10 @@ int sata_probe(int devnum)
 		rc = uclass_find_first_device(UCLASS_AHCI, &dev);
 	if (rc) {
 		printf("Cannot probe SATA device %d (err=%d)\n", devnum, rc);
+		return CMD_RET_FAILURE;
+	}
+	if (!dev) {
+		printf("No SATA device found!\n");
 		return CMD_RET_FAILURE;
 	}
 	rc = sata_scan(dev);

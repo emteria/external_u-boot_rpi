@@ -9,6 +9,9 @@
 
 #define CONFIG_SYS_NS16550_MEM32
 
+/* ((CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR - 64) * 512) */
+#define CONFIG_SPL_PAD_TO		8355840
+
 #ifndef CONFIG_SPL_BUILD
 
 /* First try to boot from SD (index 0), then eMMC (index 1) */
@@ -51,11 +54,11 @@
 #endif
 #define PARTS_DEFAULT \
 	"uuid_disk=${uuid_gpt_disk};" \
-	"name=loader1,start=32K,size=4000K,uuid=${uuid_gpt_loader1};" \
+	"name=loader1,start=32K,size=4032K,uuid=${uuid_gpt_loader1};" \
+	"name=env,start=4064K,size=32K,uuid=${uuid_gpt_env};" \
 	"name=loader2,start=8MB,size=4MB,uuid=${uuid_gpt_loader2};" \
 	"name=trust,size=4M,uuid=${uuid_gpt_atf};" \
-	"name=boot,size=112M,bootable,uuid=${uuid_gpt_boot};" \
-	"name=rootfs,size=-,uuid="ROOT_UUID
+	"name=rootfs,bootable,size=-,uuid="ROOT_UUID
 
 #endif
 

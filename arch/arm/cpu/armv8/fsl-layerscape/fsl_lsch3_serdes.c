@@ -548,11 +548,31 @@ void fsl_serdes_init(void)
 #if defined(CONFIG_FSL_MC_ENET) && !defined(CONFIG_SPL_BUILD)
 	int i , j;
 
+#ifdef CONFIG_ARCH_LX2160A
+	for (i = XFI1, j = 1; i <= XFI14; i++, j++)
+		xfi_dpmac[i] = j;
+
+	for (i = SGMII1, j = 1; i <= SGMII18; i++, j++)
+		sgmii_dpmac[i] = j;
+
+	for (i = _25GE1, j = 1; i <= _25GE10; i++, j++)
+		a25gaui_dpmac[i] = j;
+
+	for (i = _40GE1, j = 1; i <= _40GE2; i++, j++)
+		xlaui_dpmac[i] = j;
+
+	for (i = _50GE1, j = 1; i <= _50GE2; i++, j++)
+		caui2_dpmac[i] = j;
+
+	for (i = _100GE1, j = 1; i <= _100GE2; i++, j++)
+		caui4_dpmac[i] = j;
+#else
 	for (i = XFI1, j = 1; i <= XFI8; i++, j++)
 		xfi_dpmac[i] = j;
 
 	for (i = SGMII1, j = 1; i <= SGMII16; i++, j++)
 		sgmii_dpmac[i] = j;
+#endif
 #endif
 
 #ifdef CONFIG_SYS_FSL_SRDS_1
@@ -579,4 +599,63 @@ void fsl_serdes_init(void)
 		    FSL_CHASSIS3_SRDS3_PRTCL_SHIFT,
 		    serdes3_prtcl_map);
 #endif
+}
+
+int serdes_set_env(int sd, int rcwsr, int sd_prctl_mask, int sd_prctl_shift)
+{
+	struct ccsr_gur __iomem *gur = (void *)(CONFIG_SYS_FSL_GUTS_ADDR);
+	char scfg[16], snum[16];
+	int cfgr = 0;
+	u32 cfg;
+
+	cfg = gur_in32(&gur->rcwsr[rcwsr - 1]) & sd_prctl_mask;
+	cfg >>= sd_prctl_shift;
+	cfg = serdes_get_number(sd, cfg);
+
+#if defined(SRDS_BITS_PER_LANE)
+	/*
+	 * reverse lanes, lane 0 should be printed first so it must be moved to
+	 * high order bits.
+	 * For example bb58 should read 85bb, lane 0 being protocol 8.
+	 * This only applies to SoCs that define SRDS_BITS_PER_LANE and have
+	 * independent per-lane protocol configuration, at this time LS1028A and
+	 * LS1088A. LS2 and LX2 SoCs encode the full protocol mix across all
+	 * lanes as a single value.
+	 */
+	for (int i = 0; i < SRDS_MAX_LANES; i++) {
+		int tmp;
+
+		tmp = cfg >> (i * SRDS_BITS_PER_LANE);
+		tmp &= GENMASK(SRDS_BITS_PER_LANE - 1, 0);
+		tmp <<= (SRDS_MAX_LANES - i - 1) * SRDS_BITS_PER_LANE;
+		cfgr |= tmp;
+	}
+#endif /* SRDS_BITS_PER_LANE */
+
+	snprintf(snum, 16, "serdes%d", sd);
+	snprintf(scfg, 16, "%x", cfgr);
+	env_set(snum, scfg);
+
+	return 0;
+}
+
+int serdes_misc_init(void)
+{
+#ifdef CONFIG_SYS_FSL_SRDS_1
+	serdes_set_env(FSL_SRDS_1, FSL_CHASSIS3_SRDS1_REGSR,
+		       FSL_CHASSIS3_SRDS1_PRTCL_MASK,
+		       FSL_CHASSIS3_SRDS1_PRTCL_SHIFT);
+#endif
+#ifdef CONFIG_SYS_FSL_SRDS_2
+	serdes_set_env(FSL_SRDS_2, FSL_CHASSIS3_SRDS2_REGSR,
+		       FSL_CHASSIS3_SRDS2_PRTCL_MASK,
+		       FSL_CHASSIS3_SRDS2_PRTCL_SHIFT);
+#endif
+#ifdef CONFIG_SYS_NXP_SRDS_3
+	serdes_set_env(NXP_SRDS_3, FSL_CHASSIS3_SRDS3_REGSR,
+		       FSL_CHASSIS3_SRDS3_PRTCL_MASK,
+		       FSL_CHASSIS3_SRDS3_PRTCL_SHIFT);
+#endif
+
+	return 0;
 }

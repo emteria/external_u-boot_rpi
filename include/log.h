@@ -9,12 +9,13 @@
 #ifndef __LOG_H
 #define __LOG_H
 
+#include <command.h>
 #include <dm/uclass-id.h>
 #include <linux/list.h>
 
 /** Log levels supported, ranging from most to least important */
 enum log_level_t {
-	LOGL_EMERG = 0,		/*U-Boot is unstable */
+	LOGL_EMERG = 0,		/* U-Boot is unstable */
 	LOGL_ALERT,		/* Action must be taken immediately */
 	LOGL_CRIT,		/* Critical conditions */
 	LOGL_ERR,		/* Error that prevents something from working */
@@ -49,6 +50,7 @@ enum log_category_t {
 	LOGC_ALLOC,	/* Memory allocation */
 	LOGC_SANDBOX,	/* Related to the sandbox board */
 	LOGC_BLOBLIST,	/* Bloblist */
+	LOGC_DEVRES,	/* Device resources (devres_... functions) */
 
 	LOGC_COUNT,	/* Number of log categories */
 	LOGC_END,	/* Sentinel value for a list of log categories */
@@ -73,7 +75,20 @@ static inline int log_uc_cat(enum uclass_id id)
  * @return 0 if log record was emitted, -ve on error
  */
 int _log(enum log_category_t cat, enum log_level_t level, const char *file,
-	 int line, const char *func, const char *fmt, ...);
+	 int line, const char *func, const char *fmt, ...)
+		__attribute__ ((format (__printf__, 6, 7)));
+
+static inline int _log_nop(enum log_category_t cat, enum log_level_t level,
+			   const char *file, int line, const char *func,
+			   const char *fmt, ...)
+		__attribute__ ((format (__printf__, 6, 7)));
+
+static inline int _log_nop(enum log_category_t cat, enum log_level_t level,
+			   const char *file, int line, const char *func,
+			   const char *fmt, ...)
+{
+	return 0;
+}
 
 /* Define this at the top of a file to add a prefix to debug messages */
 #ifndef pr_fmt
@@ -100,21 +115,27 @@ int _log(enum log_category_t cat, enum log_level_t level, const char *file,
 #define log_io(_fmt...)		log(LOG_CATEGORY, LOGL_DEBUG_IO, ##_fmt)
 #else
 #define _LOG_MAX_LEVEL LOGL_INFO
-#define log_err(_fmt...)
-#define log_warning(_fmt...)
-#define log_notice(_fmt...)
-#define log_info(_fmt...)
-#define log_debug(_fmt...)
-#define log_content(_fmt...)
-#define log_io(_fmt...)
+#define log_err(_fmt...)	log_nop(LOG_CATEGORY, LOGL_ERR, ##_fmt)
+#define log_warning(_fmt...)	log_nop(LOG_CATEGORY, LOGL_WARNING, ##_fmt)
+#define log_notice(_fmt...)	log_nop(LOG_CATEGORY, LOGL_NOTICE, ##_fmt)
+#define log_info(_fmt...)	log_nop(LOG_CATEGORY, LOGL_INFO, ##_fmt)
+#define log_debug(_fmt...)	log_nop(LOG_CATEGORY, LOGL_DEBUG, ##_fmt)
+#define log_content(_fmt...)	log_nop(LOG_CATEGORY, \
+					LOGL_DEBUG_CONTENT, ##_fmt)
+#define log_io(_fmt...)		log_nop(LOG_CATEGORY, LOGL_DEBUG_IO, ##_fmt)
 #endif
 
 #if CONFIG_IS_ENABLED(LOG)
+#ifdef LOG_DEBUG
+#define _LOG_DEBUG	1
+#else
+#define _LOG_DEBUG	0
+#endif
 
 /* Emit a log record if the level is less that the maximum */
 #define log(_cat, _level, _fmt, _args...) ({ \
 	int _l = _level; \
-	if (CONFIG_IS_ENABLED(LOG) && _l <= _LOG_MAX_LEVEL) \
+	if (CONFIG_IS_ENABLED(LOG) && (_l <= _LOG_MAX_LEVEL || _LOG_DEBUG)) \
 		_log((enum log_category_t)(_cat), _l, __FILE__, __LINE__, \
 		      __func__, \
 		      pr_fmt(_fmt), ##_args); \
@@ -122,6 +143,12 @@ int _log(enum log_category_t cat, enum log_level_t level, const char *file,
 #else
 #define log(_cat, _level, _fmt, _args...)
 #endif
+
+#define log_nop(_cat, _level, _fmt, _args...) ({ \
+	int _l = _level; \
+	_log_nop((enum log_category_t)(_cat), _l, __FILE__, __LINE__, \
+		      __func__, pr_fmt(_fmt), ##_args); \
+})
 
 #ifdef DEBUG
 #define _DEBUG	1
@@ -177,9 +204,35 @@ int _log(enum log_category_t cat, enum log_level_t level, const char *file,
  */
 void __assert_fail(const char *assertion, const char *file, unsigned int line,
 		   const char *function);
+
+/**
+ * assert() - assert expression is true
+ *
+ * If the expression x evaluates to false and _DEBUG evaluates to true, a panic
+ * message is written and the system stalls. The value of _DEBUG is set to true
+ * if DEBUG is defined before including common.h.
+ *
+ * The expression x is always executed irrespective of the value of _DEBUG.
+ *
+ * @x:		expression to test
+ */
 #define assert(x) \
 	({ if (!(x) && _DEBUG) \
 		__assert_fail(#x, __FILE__, __LINE__, __func__); })
+
+/*
+ * This one actually gets compiled in even without DEBUG. It doesn't include the
+ * full pathname as it may be huge. Only use this when the user should be
+ * warning, similar to BUG_ON() in linux.
+ *
+ * @return true if assertion succeeded (condition is true), else false
+ */
+#define assert_noisy(x) \
+	({ bool _val = (x); \
+	if (!_val) \
+		__assert_fail(#x, "?", __LINE__, __func__); \
+	_val; \
+	})
 
 #if CONFIG_IS_ENABLED(LOG) && defined(CONFIG_LOG_ERROR_RETURN)
 /*

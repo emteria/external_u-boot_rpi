@@ -9,10 +9,10 @@
 #include <common.h>
 
 /* Android standard boot slot names are 'a', 'b', 'c', ... */
-#define ANDROID_BOOT_SLOT_NAME(slot_num) ('a' + (slot_num))
+#define BOOT_SLOT_NAME(slot_num) ('a' + (slot_num))
 
 /* Number of slots */
-#define ANDROID_NUM_SLOTS 2
+#define NUM_SLOTS 2
 
 /**
  * Select the slot where to boot from.

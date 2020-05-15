@@ -151,7 +151,7 @@ static int do_tpm_pcr_read(cmd_tbl_t *cmdtp, int flag, int argc,
 
 	rc = tpm2_pcr_read(dev, index, priv->pcr_select_min, data, &updates);
 	if (!rc) {
-		printf("PCR #%u content (%d known updates):\n", index, updates);
+		printf("PCR #%u content (%u known updates):\n", index, updates);
 		print_byte_string(data, TPM2_DIGEST_LEN);
 	}
 
@@ -354,6 +354,7 @@ static int do_tpm_pcr_setauthvalue(cmd_tbl_t *cmdtp, int flag,
 }
 
 static cmd_tbl_t tpm2_commands[] = {
+	U_BOOT_CMD_MKENT(device, 0, 1, do_tpm_device, "", ""),
 	U_BOOT_CMD_MKENT(info, 0, 1, do_tpm_info, "", ""),
 	U_BOOT_CMD_MKENT(init, 0, 1, do_tpm_init, "", ""),
 	U_BOOT_CMD_MKENT(startup, 0, 1, do_tpm2_startup, "", ""),
@@ -381,6 +382,8 @@ cmd_tbl_t *get_tpm2_commands(unsigned int *size)
 U_BOOT_CMD(tpm2, CONFIG_SYS_MAXARGS, 1, do_tpm, "Issue a TPMv2.x command",
 "<command> [<arguments>]\n"
 "\n"
+"device [num device]\n"
+"    Show all devices or set the specified device\n"
 "info\n"
 "    Show information about the TPM.\n"
 "init\n"

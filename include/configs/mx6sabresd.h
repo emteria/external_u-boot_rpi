@@ -16,8 +16,6 @@
 #define CONFIG_MXC_UART_BASE	UART1_BASE
 #define CONSOLE_DEV		"ttymxc0"
 
-#define CONFIG_SUPPORT_EMMC_BOOT /* eMMC specific */
-
 #include "mx6sabre_common.h"
 
 /* Falcon Mode */
@@ -63,5 +61,14 @@
 #define CONFIG_MXC_USB_FLAGS		0
 #define CONFIG_USB_MAX_CONTROLLER_COUNT	1 /* Enabled USB controller number */
 #endif
+
+#define CONFIG_FEC_MXC
+#define IMX_FEC_BASE			ENET_BASE_ADDR
+#define CONFIG_FEC_XCV_TYPE		RGMII
+#define CONFIG_ETHPRIME			"FEC"
+#define CONFIG_FEC_MXC_PHYADDR		1
+
+#define CONFIG_PHY_ATHEROS
+
 
 #endif                         /* __MX6SABRESD_CONFIG_H */

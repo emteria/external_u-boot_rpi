@@ -64,10 +64,9 @@ obj-$(CONFIG_$(SPL_TPL_)BOOTSTAGE) += bootstage.o
 obj-$(CONFIG_$(SPL_TPL_)BLOBLIST) += bloblist.o
 
 ifdef CONFIG_SPL_BUILD
-ifdef CONFIG_SPL_DFU_SUPPORT
+ifdef CONFIG_SPL_DFU
 obj-$(CONFIG_DFU_OVER_USB) += dfu.o
 endif
-obj-$(CONFIG_SPL_DFU_SUPPORT) += cli_hush.o
 obj-$(CONFIG_SPL_HASH_SUPPORT) += hash.o
 obj-$(CONFIG_TPL_HASH_SUPPORT) += hash.o
 obj-$(CONFIG_SPL_YMODEM_SUPPORT) += xyzModem.o
@@ -76,8 +75,9 @@ obj-$(CONFIG_SPL_NET_SUPPORT) += miiphyutil.o
 obj-$(CONFIG_$(SPL_TPL_)OF_LIBFDT) += fdt_support.o
 
 ifdef CONFIG_SPL_USB_HOST_SUPPORT
-obj-$(CONFIG_SPL_USB_SUPPORT) += usb.o usb_hub.o
-obj-$(CONFIG_USB_STORAGE) += usb_storage.o
+obj-y += usb.o
+obj-y += usb_hub.o
+obj-$(CONFIG_SPL_USB_STORAGE) += usb_storage.o
 else
 obj-$(CONFIG_USB_MUSB_HOST) += usb.o
 endif
@@ -108,17 +108,17 @@ endif
 
 obj-y += image.o
 obj-$(CONFIG_ANDROID_AB) += android_ab.o
-obj-$(CONFIG_ANDROID_BOOT_IMAGE) += image-android.o
-obj-$(CONFIG_ANDROID_BOOTLOADER) += android_bootloader.o
+obj-$(CONFIG_ANDROID_BOOT_IMAGE) += image-android.o image-android-dt.o
 obj-$(CONFIG_$(SPL_TPL_)OF_LIBFDT) += image-fdt.o
 obj-$(CONFIG_$(SPL_TPL_)FIT) += image-fit.o
 obj-$(CONFIG_$(SPL_)MULTI_DTB_FIT) += boot_fit.o common_fit.o
 obj-$(CONFIG_$(SPL_TPL_)FIT_SIGNATURE) += image-sig.o
+obj-$(CONFIG_$(SPL_TPL_)FIT_CIPHER) += image-cipher.o
 obj-$(CONFIG_IO_TRACE) += iotrace.o
 obj-y += memsize.o
 obj-y += stdio.o
 
-obj-$(CONFIG_CMD_DTIMG) += image-android-dt.o
+obj-$(CONFIG_CMD_ADTIMG) += image-android-dt.o
 
 ifdef CONFIG_CMD_EEPROM_LAYOUT
 obj-y += eeprom/eeprom_field.o eeprom/eeprom_layout.o
@@ -126,6 +126,7 @@ endif
 
 obj-y += cli.o
 obj-$(CONFIG_FSL_DDR_INTERACTIVE) += cli_simple.o cli_readline.o
+obj-$(CONFIG_STM32MP1_DDR_INTERACTIVE) += cli_simple.o cli_readline.o
 obj-$(CONFIG_DFU_OVER_USB) += dfu.o
 obj-y += command.o
 obj-$(CONFIG_$(SPL_TPL_)LOG) += log.o

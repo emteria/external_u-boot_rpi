@@ -6,12 +6,14 @@
 
 #include <common.h>
 #include <clk.h>
+#include <cpu_func.h>
 #include <fdtdec.h>
 #include <mmc.h>
 #include <dm.h>
+#include <dm/device_compat.h>
 #include <dm/pinctrl.h>
 #include <linux/compat.h>
-#include <linux/dma-direction.h>
+#include <linux/dma-mapping.h>
 #include <linux/io.h>
 #include <linux/sizes.h>
 #include <power/regulator.h>
@@ -73,26 +75,6 @@ void tmio_sd_writel(struct tmio_sd_priv *priv,
 			writew(val >> 16, priv->regbase + (reg >> 1) + 2);
 	} else
 		writel(val, priv->regbase + reg);
-}
-
-static dma_addr_t __dma_map_single(void *ptr, size_t size,
-				   enum dma_data_direction dir)
-{
-	unsigned long addr = (unsigned long)ptr;
-
-	if (dir == DMA_FROM_DEVICE)
-		invalidate_dcache_range(addr, addr + size);
-	else
-		flush_dcache_range(addr, addr + size);
-
-	return addr;
-}
-
-static void __dma_unmap_single(dma_addr_t addr, size_t size,
-			       enum dma_data_direction dir)
-{
-	if (dir != DMA_TO_DEVICE)
-		invalidate_dcache_range(addr, addr + size);
 }
 
 static int tmio_sd_check_error(struct udevice *dev, struct mmc_cmd *cmd)
@@ -347,12 +329,10 @@ static int tmio_sd_dma_xfer(struct udevice *dev, struct mmc_data *data)
 		/*
 		 * The DMA READ completion flag position differs on Socionext
 		 * and Renesas SoCs. It is bit 20 on Socionext SoCs and using
-		 * bit 17 is a hardware bug and forbidden. It is bit 17 on
-		 * Renesas SoCs and bit 20 does not work on them.
+		 * bit 17 is a hardware bug and forbidden. It is either bit 17
+		 * or bit 20 on Renesas SoCs, depending on SoC.
 		 */
-		poll_flag = (priv->caps & TMIO_SD_CAP_RCAR) ?
-			    TMIO_SD_DMA_INFO1_END_RD :
-			    TMIO_SD_DMA_INFO1_END_RD2;
+		poll_flag = priv->read_poll_flag;
 		tmp |= TMIO_SD_DMA_MODE_DIR_RD;
 	} else {
 		buf = (void *)data->src;
@@ -363,13 +343,16 @@ static int tmio_sd_dma_xfer(struct udevice *dev, struct mmc_data *data)
 
 	tmio_sd_writel(priv, tmp, TMIO_SD_DMA_MODE);
 
-	dma_addr = __dma_map_single(buf, len, dir);
+	dma_addr = dma_map_single(buf, len, dir);
 
 	tmio_sd_dma_start(priv, dma_addr);
 
 	ret = tmio_sd_dma_wait_for_irq(dev, poll_flag, data->blocks);
 
-	__dma_unmap_single(dma_addr, len, dir);
+	if (poll_flag == TMIO_SD_DMA_INFO1_END_RD)
+		udelay(1);
+
+	dma_unmap_single(dma_addr, len, dir);
 
 	return ret;
 }
@@ -704,10 +687,14 @@ static void tmio_sd_host_init(struct tmio_sd_priv *priv)
 	 * This register dropped backward compatibility at version 0x10.
 	 * Write an appropriate value depending on the IP version.
 	 */
-	if (priv->version >= 0x10)
-		tmio_sd_writel(priv, 0x101, TMIO_SD_HOST_MODE);
-	else
+	if (priv->version >= 0x10) {
+		if (priv->caps & TMIO_SD_CAP_64BIT)
+			tmio_sd_writel(priv, 0x000, TMIO_SD_HOST_MODE);
+		else
+			tmio_sd_writel(priv, 0x101, TMIO_SD_HOST_MODE);
+	} else {
 		tmio_sd_writel(priv, 0x0, TMIO_SD_HOST_MODE);
+	}
 
 	if (priv->caps & TMIO_SD_CAP_DMA_INTERNAL) {
 		tmp = tmio_sd_readl(priv, TMIO_SD_DMA_MODE);
@@ -778,7 +765,10 @@ int tmio_sd_probe(struct udevice *dev, u32 quirks)
 	plat->cfg.f_min = mclk /
 			(priv->caps & TMIO_SD_CAP_DIV1024 ? 1024 : 512);
 	plat->cfg.f_max = mclk;
-	plat->cfg.b_max = U32_MAX; /* max value of TMIO_SD_SECCNT */
+	if (quirks & TMIO_SD_CAP_16BIT)
+		plat->cfg.b_max = U16_MAX; /* max value of TMIO_SD_SECCNT */
+	else
+		plat->cfg.b_max = U32_MAX; /* max value of TMIO_SD_SECCNT */
 
 	upriv->mmc = &plat->mmc;
 

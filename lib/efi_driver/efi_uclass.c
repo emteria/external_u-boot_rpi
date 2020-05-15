@@ -18,6 +18,7 @@
  */
 
 #include <efi_driver.h>
+#include <malloc.h>
 
 /**
  * check_node_type() - check node type
@@ -112,7 +113,7 @@ static efi_status_t EFIAPI efi_uc_start(
 	struct efi_driver_binding_extended_protocol *bp =
 			(struct efi_driver_binding_extended_protocol *)this;
 
-	EFI_ENTRY("%p, %pUl, %ls", this, controller_handle,
+	EFI_ENTRY("%p, %p, %ls", this, controller_handle,
 		  efi_dp_str(remaining_device_path));
 
 	/* Attach driver to controller */
@@ -197,9 +198,10 @@ static efi_status_t EFIAPI efi_uc_stop(
 	efi_status_t ret;
 	efi_uintn_t count;
 	struct efi_open_protocol_info_entry *entry_buffer;
-	efi_guid_t *guid_controller = NULL;
+	struct efi_driver_binding_extended_protocol *bp =
+			(struct efi_driver_binding_extended_protocol *)this;
 
-	EFI_ENTRY("%p, %pUl, %zu, %p", this, controller_handle,
+	EFI_ENTRY("%p, %p, %zu, %p", this, controller_handle,
 		  number_of_children, child_handle_buffer);
 
 	/* Destroy provided child controllers */
@@ -217,7 +219,7 @@ static efi_status_t EFIAPI efi_uc_stop(
 
 	/* Destroy all children */
 	ret = EFI_CALL(systab.boottime->open_protocol_information(
-					controller_handle, guid_controller,
+					controller_handle, bp->ops->protocol,
 					&entry_buffer, &count));
 	if (ret != EFI_SUCCESS)
 		goto out;
@@ -233,12 +235,11 @@ static efi_status_t EFIAPI efi_uc_stop(
 	}
 	ret = EFI_CALL(systab.boottime->free_pool(entry_buffer));
 	if (ret != EFI_SUCCESS)
-		printf("%s(%u) %s: ERROR: Cannot free pool\n",
-		       __FILE__, __LINE__, __func__);
+		printf("%s: ERROR: Cannot free pool\n", __func__);
 
 	/* Detach driver from controller */
 	ret = EFI_CALL(systab.boottime->close_protocol(
-			controller_handle, guid_controller,
+			controller_handle, bp->ops->protocol,
 			this->driver_binding_handle, controller_handle));
 out:
 	return EFI_EXIT(ret);
@@ -300,9 +301,6 @@ efi_status_t efi_driver_init(void)
 {
 	struct driver *drv;
 	efi_status_t ret = EFI_SUCCESS;
-
-	/* Save 'gd' pointer */
-	efi_save_gd();
 
 	debug("EFI: Initializing EFI driver framework\n");
 	for (drv = ll_entry_start(struct driver, driver);

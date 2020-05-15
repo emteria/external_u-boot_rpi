@@ -25,7 +25,6 @@
 #define CONFIG_CMDLINE_TAG		/* enable passing of ATAGs */
 
 /* Environment */
-#define CONFIG_ENV_SIZE			0x2000	/* Total Size Environment */
 
 /*
  * NS16550 Configuration
@@ -39,14 +38,8 @@
  */
 #define CONFIG_SYS_MMC_MAX_DEVICE 4
 
-/*
- * select serial console configuration
- */
-
 /* allow to overwrite serial and ethaddr */
 #define CONFIG_ENV_OVERWRITE
-
-/* turn on command-line edit/hist/auto */
 
 /*
  * Increasing the size of the IO buffer as default nfsargs size is more
@@ -68,7 +61,6 @@
 #define PHYS_SDRAM_1		NV_PA_SDRC_CS0
 #define PHYS_SDRAM_1_SIZE	0x20000000	/* 512M */
 
-#define CONFIG_SYS_UBOOT_START	CONFIG_SYS_TEXT_BASE
 #define CONFIG_SYS_SDRAM_BASE	PHYS_SDRAM_1
 
 #define CONFIG_SYS_BOOTMAPSZ	(256 << 20)	/* 256M */
@@ -87,8 +79,5 @@
 						CONFIG_SPL_TEXT_BASE)
 #define CONFIG_SYS_SPL_MALLOC_SIZE	0x00010000
 #endif
-
-/* Misc utility code */
-#define CONFIG_BOUNCE_BUFFER
 
 #endif /* _TEGRA_COMMON_H_ */

@@ -41,9 +41,6 @@
 #define CONFIG_BOOTP_BOOTFILESIZE
 #define CONFIG_BOOTP_MAY_FAIL
 
-#define CONFIG_IP_DEFRAG
-#define CONFIG_TFTP_BLOCKSIZE	4096
-
 /* Miscellaneous configurable options */
 #define CONFIG_SYS_LOAD_ADDR		0x8000000
 
@@ -54,6 +51,26 @@
 					sizeof(CONFIG_SYS_PROMPT) + 16)
 #define CONFIG_SYS_BARGSIZE		CONFIG_SYS_CBSIZE
 #define CONFIG_SYS_MAXARGS		64
+
+#if defined(CONFIG_CMD_DFU)
+#define CONFIG_SYS_DFU_DATA_BUF_SIZE	0x1800000
+#define DFU_DEFAULT_POLL_TIMEOUT	300
+#define CONFIG_THOR_RESET_OFF
+#define DFU_ALT_INFO_RAM \
+	"dfu_ram_info=" \
+	"setenv dfu_alt_info " \
+	"Image ram $kernel_addr_r $kernel_size_r\\\\;" \
+	"system.dtb ram $fdt_addr_r $fdt_size_r\0" \
+	"dfu_ram=run dfu_ram_info && dfu 0 ram 0\0" \
+	"thor_ram=run dfu_ram_info && thordown 0 ram 0\0"
+
+#define DFU_ALT_INFO  \
+		DFU_ALT_INFO_RAM
+#endif
+
+#if !defined(DFU_ALT_INFO)
+# define DFU_ALT_INFO
+#endif
 
 /* Ethernet driver */
 #if defined(CONFIG_ZYNQ_GEM)
@@ -68,14 +85,58 @@
 
 #define ENV_MEM_LAYOUT_SETTINGS \
 	"fdt_high=10000000\0" \
-	"initrd_high=10000000\0" \
 	"fdt_addr_r=0x40000000\0" \
+	"fdt_size_r=0x400000\0" \
 	"pxefile_addr_r=0x10000000\0" \
 	"kernel_addr_r=0x18000000\0" \
-	"scriptaddr=0x02000000\0" \
-	"ramdisk_addr_r=0x02100000\0"
+	"kernel_size_r=0x10000000\0" \
+	"scriptaddr=0x20000000\0" \
+	"ramdisk_addr_r=0x02100000\0" \
+	"script_size_f=0x80000\0"
+
+#if defined(CONFIG_MMC_SDHCI_ZYNQ)
+# define BOOT_TARGET_DEVICES_MMC(func)	func(MMC, mmc, 0) func(MMC, mmc, 1)
+#else
+# define BOOT_TARGET_DEVICES_MMC(func)
+#endif
+
+#if defined(CONFIG_ZYNQMP_GQSPI) || defined(CONFIG_CADENCE_OSPI_VERSAL)
+# define BOOT_TARGET_DEVICES_XSPI(func)	func(XSPI, xspi, 0)
+#else
+# define BOOT_TARGET_DEVICES_XSPI(func)
+#endif
+
+#define BOOTENV_DEV_XSPI(devtypeu, devtypel, instance) \
+	"bootcmd_xspi0=sf probe 0 0 0 && " \
+	"sf read $scriptaddr $script_offset_f $script_size_f && " \
+	"source ${scriptaddr}; echo SCRIPT FAILED: continuing...;\0"
+
+#define BOOTENV_DEV_NAME_XSPI(devtypeu, devtypel, instance) \
+	"xspi "
+
+#define BOOT_TARGET_DEVICES_JTAG(func)	func(JTAG, jtag, na)
+
+#define BOOTENV_DEV_JTAG(devtypeu, devtypel, instance) \
+	"bootcmd_jtag=source $scriptaddr; echo SCRIPT FAILED: continuing...;\0"
+
+#define BOOTENV_DEV_NAME_JTAG(devtypeu, devtypel, instance) \
+	"jtag "
+
+#define BOOT_TARGET_DEVICES_DFU_USB(func)  func(DFU_USB, dfu_usb, 0)
+
+#define BOOTENV_DEV_DFU_USB(devtypeu, devtypel, instance) \
+	"bootcmd_dfu_usb=setenv dfu_alt_info boot.scr ram $scriptaddr " \
+	"$script_size_f; dfu 0 ram 0 && source $scriptaddr; " \
+	"echo SCRIPT FAILED: continuing...;\0"
+
+#define BOOTENV_DEV_NAME_DFU_USB(devtypeu, devtypel, instance) \
+	"dfu_usb "
 
 #define BOOT_TARGET_DEVICES(func) \
+	BOOT_TARGET_DEVICES_JTAG(func) \
+	BOOT_TARGET_DEVICES_MMC(func) \
+	BOOT_TARGET_DEVICES_XSPI(func) \
+	BOOT_TARGET_DEVICES_DFU_USB(func) \
 	func(PXE, pxe, na) \
 	func(DHCP, dhcp, na)
 
@@ -85,7 +146,8 @@
 #ifndef CONFIG_EXTRA_ENV_SETTINGS
 #define CONFIG_EXTRA_ENV_SETTINGS \
 	ENV_MEM_LAYOUT_SETTINGS \
-	BOOTENV
+	BOOTENV \
+	DFU_ALT_INFO
 #endif
 
 #endif /* __XILINX_VERSAL_H */
