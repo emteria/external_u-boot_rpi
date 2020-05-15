@@ -5,7 +5,10 @@
  */
 
 #include <common.h>
+#include <cpu_func.h>
+#include <env.h>
 #include <malloc.h>
+#include <zynqmp_firmware.h>
 #include <asm/arch/hardware.h>
 #include <asm/arch/sys_proto.h>
 #include <asm/io.h>
@@ -49,8 +52,8 @@ static int do_zynqmp_verify_secure(cmd_tbl_t *cmdtp, int flag, int argc,
 				   (ulong)(key_ptr + KEY_PTR_LEN));
 	}
 
-	ret = invoke_smc(ZYNQMP_SIP_SVC_PM_SECURE_IMG_LOAD, src_lo, src_hi,
-			 key_lo, key_hi, ret_payload);
+	ret = xilinx_pm_request(PM_SECURE_IMAGE, src_lo, src_hi,
+				key_lo, key_hi, ret_payload);
 	if (ret) {
 		printf("Failed: secure op status:0x%x\n", ret);
 	} else {
@@ -174,11 +177,11 @@ static char zynqmp_help_text[] =
 	"zynqmp mmio_write address mask value - write value after masking to\n"
 	"					address\n"
 #ifdef CONFIG_DEFINE_TCM_OCM_MMAP
-	"zynqmp tcminit  mode - Initialize the TCM with zeros. TCM needs to be\n"
-	"		        initialized before accessing to avoid ECC\n"
-	"			errors. mode specifies in which mode TCM has\n"
-	"			to be initialized. Supported modes will be\n"
-	"			lock(0)/split(1)\n"
+	"zynqmp tcminit mode - Initialize the TCM with zeros. TCM needs to be\n"
+	"		       initialized before accessing to avoid ECC\n"
+	"		       errors. mode specifies in which mode TCM has\n"
+	"		       to be initialized. Supported modes will be\n"
+	"		       lock(0)/split(1)\n"
 #endif
 	;
 #endif

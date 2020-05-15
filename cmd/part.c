@@ -18,6 +18,7 @@
 #include <common.h>
 #include <config.h>
 #include <command.h>
+#include <env.h>
 #include <part.h>
 #include <vsprintf.h>
 
@@ -151,7 +152,7 @@ static int do_part_info(int argc, char * const argv[], enum cmd_part_info param)
 		snprintf(buf, sizeof(buf), LBAF, info.size);
 		break;
 	case CMD_PART_INFO_NUMBER:
-		snprintf(buf, sizeof(buf), "%d", part);
+		snprintf(buf, sizeof(buf), "0x%x", part);
 		break;
 	default:
 		printf("** Unknown cmd_part_info value: %d\n", param);
