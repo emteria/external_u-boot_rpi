@@ -487,7 +487,7 @@ CONFIG_CMD_UNZIP=y
 # Device access commands
 #
 # CONFIG_CMD_ARMFLASH is not set
-# CONFIG_CMD_BCB is not set
+CONFIG_CMD_BCB=y
 # CONFIG_CMD_BIND is not set
 # CONFIG_CMD_CLK is not set
 # CONFIG_CMD_DEMO is not set
