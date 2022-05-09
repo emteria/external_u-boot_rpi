@@ -284,9 +284,16 @@ int do_avb_verify_part(struct cmd_tbl *cmdtp, int flag,
 		avb_slot_verify(avb_ops,
 				requested_partitions,
 				slot_suffix,
-				unlocked,
+				unlocked ? AVB_SLOT_VERIFY_FLAGS_ALLOW_VERIFICATION_ERROR : 0,
 				AVB_HASHTREE_ERROR_MODE_RESTART_AND_INVALIDATE,
 				&out_data);
+
+	/*
+	 * Allow verificaion error when device is unlocked
+	 */
+	if (unlocked && slot_result == AVB_SLOT_VERIFY_RESULT_ERROR_VERIFICATION) {
+		slot_result = AVB_SLOT_VERIFY_RESULT_OK;
+	}
 
 	/*
 	 * LOCKED devices with custom root of trust setup is not supported (YELLOW)
