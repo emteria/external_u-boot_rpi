@@ -19,11 +19,3 @@
 &gpio {
 	bootph-all;
 };
-
-&uart0_gpio14 {
-	bootph-all;
-};
-
-&uart1_gpio14 {
-	bootph-all;
-};
