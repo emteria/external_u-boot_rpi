@@ -435,7 +435,7 @@ CONFIG_ARCH_FIXUP_FDT_MEMORY=y
 # CONFIG_USE_BOOTARGS is not set
 # CONFIG_BOOTARGS_SUBST is not set
 CONFIG_USE_BOOTCOMMAND=y
-CONFIG_BOOTCOMMAND="setenv mmc_bootdev 0 && setenv scriptaddr 0x3000000 && load mmc ${mmc_bootdev}:1 ${scriptaddr} uboot.scr.uimg && source ${scriptaddr}"
+CONFIG_BOOTCOMMAND="setenv mmc_bootdev 0 && source ${scriptaddr}"
 CONFIG_USE_PREBOOT=y
 CONFIG_PREBOOT=""
 CONFIG_DEFAULT_FDT_FILE=""
