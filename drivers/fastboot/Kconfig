@@ -43,6 +43,7 @@ config UDP_FUNCTION_FASTBOOT_PORT
 config TCP_FUNCTION_FASTBOOT
 	depends on NET
 	select FASTBOOT
+	select PROT_TCP
 	bool "Enable fastboot protocol over TCP"
 	help
 	  This enables the fastboot protocol over TCP.
