@@ -14,6 +14,8 @@
 #include <init.h>
 #include <memalign.h>
 #include <mmc.h>
+#include <nvme.h>
+#include <usb.h>
 #include <asm/gpio.h>
 #include <asm/arch/mbox.h>
 #include <asm/arch/msg.h>
@@ -556,6 +558,162 @@ int board_init(void)
 	gd->bd->bi_boot_params = 0x100;
 
 	return bcm2835_power_on_module(BCM2835_MBOX_POWER_DEVID_USB_HCD);
+}
+
+/* Sysfs paths Android matches its block devices against, per boot medium */
+#define BCM2712_BOOT_DEVICES_SD		"soc@107c000000/1000fff000.mmc"
+#define BCM2712_BOOT_DEVICES_NVME	"axi/1000110000.pcie"
+#define BCM2712_BOOT_DEVICES_USB	"axi/1000120000.pcie"
+
+/* BCM2711 puts both USB and NVMe behind its single PCIe controller */
+#define BCM2711_BOOT_DEVICES_SD		"emmc2bus/fe340000.mmc"
+#define BCM2711_BOOT_DEVICES_PCIE	"scb/fd500000.pcie"
+
+/* Boot mode the firmware reports; the values match the BOOT_ORDER digits */
+enum rpi_boot_mode {
+	RPI_BOOT_MODE_SD		= 0x1,
+	RPI_BOOT_MODE_NETWORK		= 0x2,
+	RPI_BOOT_MODE_RPIBOOT		= 0x3,
+	RPI_BOOT_MODE_USB_MSD		= 0x4,
+	RPI_BOOT_MODE_BCM_USB_MSD	= 0x5,
+	RPI_BOOT_MODE_NVME		= 0x6,
+	RPI_BOOT_MODE_HTTP		= 0x7,
+};
+
+/* /chosen/bootloader is an undocumented firmware interface and may be absent */
+static int rpi_get_boot_mode(enum rpi_boot_mode *mode)
+{
+	const void *fdt = gd->fdt_blob;
+	const fdt32_t *prop;
+	int node, len;
+
+	node = fdt_path_offset(fdt, "/chosen/bootloader");
+	if (node < 0)
+		return -ENOENT;
+
+	prop = fdt_getprop(fdt, node, "boot-mode", &len);
+	if (!prop || len != sizeof(*prop))
+		return -ENOENT;
+
+	*mode = (enum rpi_boot_mode)fdt32_to_cpu(*prop);
+
+	return 0;
+}
+
+static int rpi_start_usb(void)
+{
+	if (!IS_ENABLED(CONFIG_USB))
+		return -ENOSYS;
+
+	return usb_init();
+}
+
+static int rpi_start_nvme(void)
+{
+	if (!IS_ENABLED(CONFIG_NVME))
+		return -ENOSYS;
+
+	return nvme_scan_namespace();
+}
+
+/* The media we can boot Android from, on the SoCs we have sysfs paths for */
+static const struct rpi_boot_medium {
+	enum rpi_boot_mode mode;
+	const char *devtype;
+	const char *path_2711;
+	const char *path_2712;
+	int (*start)(void);
+} rpi_boot_media[] = {
+	{
+		RPI_BOOT_MODE_SD, "mmc",
+		BCM2711_BOOT_DEVICES_SD, BCM2712_BOOT_DEVICES_SD, NULL
+	}, {
+		RPI_BOOT_MODE_USB_MSD, "usb",
+		BCM2711_BOOT_DEVICES_PCIE, BCM2712_BOOT_DEVICES_USB,
+		rpi_start_usb
+	}, {
+		RPI_BOOT_MODE_BCM_USB_MSD, "usb",
+		BCM2711_BOOT_DEVICES_PCIE, BCM2712_BOOT_DEVICES_USB,
+		rpi_start_usb
+	}, {
+		RPI_BOOT_MODE_NVME, "nvme",
+		BCM2711_BOOT_DEVICES_PCIE, BCM2712_BOOT_DEVICES_NVME,
+		rpi_start_nvme
+	},
+};
+
+static const struct rpi_boot_medium *rpi_get_boot_medium(enum rpi_boot_mode mode)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(rpi_boot_media); i++)
+		if (rpi_boot_media[i].mode == mode)
+			return &rpi_boot_media[i];
+
+	return NULL;
+}
+
+/* Android matches its own block devices against this path */
+static const char *rpi_get_boot_devices(const struct rpi_boot_medium *medium)
+{
+	if (of_machine_is_compatible("brcm,bcm2712"))
+		return medium->path_2712;
+
+	if (of_machine_is_compatible("brcm,bcm2711"))
+		return medium->path_2711;
+
+	return NULL;
+}
+
+/* Nothing enumerates PCIe for us: CONFIG_PCI_INIT_R is off on these boards */
+static void rpi_setup_boot_medium(const struct rpi_boot_medium *medium)
+{
+	int ret;
+
+	if (!medium->start)
+		return;
+
+	if (IS_ENABLED(CONFIG_PCI)) {
+		ret = pci_init();
+		if (ret)
+			printf("RPI: PCIe init failed (%d)\n", ret);
+	}
+
+	ret = medium->start();
+	if (ret)
+		printf("RPI: %s init failed (%d)\n", medium->devtype, ret);
+}
+
+/* Publish the device the firmware booted from, so bootandroid can use it */
+int board_late_init(void)
+{
+	const struct rpi_boot_medium *medium;
+	const char *boot_devices = NULL;
+	enum rpi_boot_mode mode;
+
+	if (rpi_get_boot_mode(&mode)) {
+		printf("RPI: no firmware boot-mode, assuming SD\n");
+		mode = RPI_BOOT_MODE_SD;
+	}
+
+	medium = rpi_get_boot_medium(mode);
+	if (medium)
+		boot_devices = rpi_get_boot_devices(medium);
+
+	/* Without a path Android cannot find its disks, so publish neither */
+	if (!boot_devices) {
+		printf("RPI: no Android boot device for boot-mode %u\n", mode);
+		medium = NULL;
+	} else {
+		rpi_setup_boot_medium(medium);
+	}
+
+	/* env_set(name, NULL) deletes: bootandroid then refuses to guess */
+	env_set("devtype", medium ? medium->devtype : NULL);
+	env_set("android_boot_devices", boot_devices);
+
+	/* Failing to publish a boot device must not stop the board */
+	return 0;
 }
 
 /*
