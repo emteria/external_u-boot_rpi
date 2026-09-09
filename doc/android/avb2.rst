@@ -24,6 +24,10 @@ Integrity of the bootloader (U-Boot BLOB and environment) is out of scope.
 
 For additional details check [1]_.
 
+Only mmc is started by AVB itself. Any other interface must already be
+enumerated when AVB runs, either by the board code or by a command such as
+``usb start``, or the partition lookup fails.
+
 AVB using OP-TEE (optional)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -38,7 +42,8 @@ AVB 2.0 U-Boot shell commands
 Provides CLI interface to invoke AVB 2.0 verification + misc. commands for
 different testing purposes::
 
-    avb init <dev> - initialize avb 2 for <dev>
+    avb init [<interface>] <dev> - initialize avb 2 for hex <dev> on
+        <interface> (mmc, nvme, usb, ...; defaults to mmc)
     avb read_rb <num> - read rollback index at location <num>
     avb write_rb <num> <rb> - write rollback index <rb> to <num>
     avb is_unlocked - returns unlock status of the device
