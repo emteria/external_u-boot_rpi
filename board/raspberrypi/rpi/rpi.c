@@ -17,6 +17,7 @@
 #include <nvme.h>
 #include <usb.h>
 #include <asm/gpio.h>
+#include <linux/sizes.h>
 #include <asm/arch/mbox.h>
 #include <asm/arch/msg.h>
 #include <asm/arch/sdhci.h>
@@ -560,6 +561,44 @@ int board_init(void)
 	return bcm2835_power_on_module(BCM2835_MBOX_POWER_DEVID_USB_HCD);
 }
 
+/* RAM tiers: LARGE is the 4GB and 8GB boards, MEDIUM the 2GB, SMALL the 1GB */
+enum rpi_ram_tier {
+	RPI_RAM_SMALL,
+	RPI_RAM_MEDIUM,
+	RPI_RAM_LARGE,
+};
+
+/* A board reports less than its nominal size once the GPU has its share */
+#define RPI_RAM_MEDIUM_THRESHOLD	(SZ_1G + SZ_512M)
+#define RPI_RAM_LARGE_THRESHOLD		(3ULL * SZ_1G)
+
+static enum rpi_ram_tier rpi_get_ram_tier(void)
+{
+	if (gd->ram_size >= RPI_RAM_LARGE_THRESHOLD)
+		return RPI_RAM_LARGE;
+
+	if (gd->ram_size >= RPI_RAM_MEDIUM_THRESHOLD)
+		return RPI_RAM_MEDIUM;
+
+	return RPI_RAM_SMALL;
+}
+
+/* The CMA pool is sized from installed RAM, not from a static overlay */
+static const struct rpi_ram_budget {
+	u32 cma_size;
+} rpi_ram_budgets[] = {
+	/* Three tiers, not two: with two, a 1GB board would give 40% to CMA */
+	/* 192/384/720MB holds the pool near a fifth up to 4GB, less on 8GB */
+	[RPI_RAM_SMALL]		= { 192 * SZ_1M },
+	[RPI_RAM_MEDIUM]	= { 384 * SZ_1M },
+	[RPI_RAM_LARGE]		= { 720 * SZ_1M },
+};
+
+static const struct rpi_ram_budget *rpi_get_ram_budget(void)
+{
+	return &rpi_ram_budgets[rpi_get_ram_tier()];
+}
+
 /* Sysfs paths Android matches its block devices against, per boot medium */
 #define BCM2712_BOOT_DEVICES_SD		"soc@107c000000/1000fff000.mmc"
 #define BCM2712_BOOT_DEVICES_NVME	"axi/1000110000.pcie"
@@ -793,6 +832,48 @@ void  update_fdt_from_fw(void *fdt, void *fw_fdt)
 	copy_property(fdt, fw_fdt, "/clocks/clk-uart", "clock-frequency");
 }
 
+/* We only resize a dynamically placed pool; a node with reg is left alone */
+static void rpi_setup_cma(void *blob)
+{
+	u32 size = rpi_get_ram_budget()->cma_size;
+	fdt32_t cells[2];
+	int node, size_cells, len;
+
+	node = fdt_path_offset(blob, "/reserved-memory/linux,cma");
+	if (node < 0) {
+		printf("RPI: no CMA node, keeping the firmware default\n");
+		return;
+	}
+
+	/* BCM2712 sizes the pool in two cells, BCM2711 in one */
+	size_cells = fdt_size_cells(blob, fdt_parent_offset(blob, node));
+	if (size_cells < 1 || size_cells > 2) {
+		printf("RPI: %d CMA size cells, keeping the firmware default\n",
+		       size_cells);
+		return;
+	}
+
+	/* Linux rejects the node unless size matches the parent's cell count */
+	if (!fdt_getprop(blob, node, "size", &len) ||
+	    len != size_cells * (int)sizeof(fdt32_t)) {
+		printf("RPI: unexpected CMA size property, keeping the firmware default\n");
+		return;
+	}
+
+	if (size_cells == 2) {
+		cells[0] = cpu_to_fdt32(0);
+		cells[1] = cpu_to_fdt32(size);
+	} else {
+		cells[0] = cpu_to_fdt32(size);
+	}
+
+	if (fdt_setprop(blob, node, "size", cells, len))
+		printf("RPI: could not resize CMA, keeping the firmware default\n");
+	else
+		debug("RPI: CMA %u MiB for %llu MiB of RAM\n",
+		      size >> 20, (u64)gd->ram_size >> 20);
+}
+
 int ft_board_setup(void *blob, struct bd_info *bd)
 {
 	int node;
@@ -815,6 +896,9 @@ int ft_board_setup(void *blob, struct bd_info *bd)
 	efi_add_memory_map(0, CONFIG_RPI_EFI_NR_SPIN_PAGES << EFI_PAGE_SHIFT,
 			   EFI_RESERVED_MEMORY_TYPE);
 #endif
+
+	/* After update_fdt_from_fw(), whose values rpi_setup_cma() overrides */
+	rpi_setup_cma(blob);
 
 	return 0;
 }
