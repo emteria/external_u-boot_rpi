@@ -583,20 +583,44 @@ static enum rpi_ram_tier rpi_get_ram_tier(void)
 	return RPI_RAM_SMALL;
 }
 
-/* The CMA pool is sized from installed RAM, not from a static overlay */
+/* CMA and the boot map are sized from installed RAM, not from a static overlay */
 static const struct rpi_ram_budget {
 	u32 cma_size;
+	ulong bootm_low;
+	phys_size_t bootm_size;
 } rpi_ram_budgets[] = {
 	/* Three tiers, not two: with two, a 1GB board would give 40% to CMA */
 	/* 192/384/720MB holds the pool near a fifth up to 4GB, less on 8GB */
-	[RPI_RAM_SMALL]		= { 192 * SZ_1M },
-	[RPI_RAM_MEDIUM]	= { 384 * SZ_1M },
-	[RPI_RAM_LARGE]		= { 720 * SZ_1M },
+	[RPI_RAM_SMALL]		= { 192 * SZ_1M, 384 * SZ_1M, 768 * SZ_1M },
+	[RPI_RAM_MEDIUM]	= { 384 * SZ_1M, SZ_1G, 768 * SZ_1M },
+	[RPI_RAM_LARGE]		= { 720 * SZ_1M, SZ_1G, SZ_2G },
 };
 
 static const struct rpi_ram_budget *rpi_get_ram_budget(void)
 {
 	return &rpi_ram_budgets[rpi_get_ram_tier()];
+}
+
+/* boot_relocate_fdt skips every DRAM bank that ends below bootm_low */
+static void rpi_setup_bootm(void)
+{
+	const struct rpi_ram_budget *budget = rpi_get_ram_budget();
+	phys_size_t ram = gd->ram_size;
+	phys_size_t size = budget->bootm_size;
+	ulong low = budget->bootm_low;
+
+	/* DRAM starts at 0 on these SoCs, so a size doubles as an address */
+	if (ram <= low) {
+		printf("RPI: only %llu MiB of RAM, keeping the default boot map\n",
+		       (u64)ram >> 20);
+		return;
+	}
+
+	if (low + size > ram)
+		size = ram - low;
+
+	env_set_hex("bootm_low", low);
+	env_set_hex("bootm_size", size);
 }
 
 /* Sysfs paths Android matches its block devices against, per boot medium */
@@ -750,6 +774,8 @@ int board_late_init(void)
 	/* env_set(name, NULL) deletes: bootandroid then refuses to guess */
 	env_set("devtype", medium ? medium->devtype : NULL);
 	env_set("android_boot_devices", boot_devices);
+
+	rpi_setup_bootm();
 
 	/* Failing to publish a boot device must not stop the board */
 	return 0;
