@@ -14,7 +14,10 @@
 #include <init.h>
 #include <memalign.h>
 #include <mmc.h>
+#include <nvme.h>
+#include <usb.h>
 #include <asm/gpio.h>
+#include <linux/sizes.h>
 #include <asm/arch/mbox.h>
 #include <asm/arch/msg.h>
 #include <asm/arch/sdhci.h>
@@ -558,6 +561,226 @@ int board_init(void)
 	return bcm2835_power_on_module(BCM2835_MBOX_POWER_DEVID_USB_HCD);
 }
 
+/* RAM tiers: LARGE is the 4GB and 8GB boards, MEDIUM the 2GB, SMALL the 1GB */
+enum rpi_ram_tier {
+	RPI_RAM_SMALL,
+	RPI_RAM_MEDIUM,
+	RPI_RAM_LARGE,
+};
+
+/* A board reports less than its nominal size once the GPU has its share */
+#define RPI_RAM_MEDIUM_THRESHOLD	(SZ_1G + SZ_512M)
+#define RPI_RAM_LARGE_THRESHOLD		(3ULL * SZ_1G)
+
+static enum rpi_ram_tier rpi_get_ram_tier(void)
+{
+	if (gd->ram_size >= RPI_RAM_LARGE_THRESHOLD)
+		return RPI_RAM_LARGE;
+
+	if (gd->ram_size >= RPI_RAM_MEDIUM_THRESHOLD)
+		return RPI_RAM_MEDIUM;
+
+	return RPI_RAM_SMALL;
+}
+
+/* CMA and the boot map are sized from installed RAM, not from a static overlay */
+static const struct rpi_ram_budget {
+	u32 cma_size;
+	ulong bootm_low;
+	phys_size_t bootm_size;
+} rpi_ram_budgets[] = {
+	/* Three tiers, not two: with two, a 1GB board would give 40% to CMA */
+	/* 192/384/720MB holds the pool near a fifth up to 4GB, less on 8GB */
+	[RPI_RAM_SMALL]		= { 192 * SZ_1M, 384 * SZ_1M, 768 * SZ_1M },
+	[RPI_RAM_MEDIUM]	= { 384 * SZ_1M, SZ_1G, 768 * SZ_1M },
+	[RPI_RAM_LARGE]		= { 720 * SZ_1M, SZ_1G, SZ_2G },
+};
+
+static const struct rpi_ram_budget *rpi_get_ram_budget(void)
+{
+	return &rpi_ram_budgets[rpi_get_ram_tier()];
+}
+
+/* boot_relocate_fdt skips every DRAM bank that ends below bootm_low */
+static void rpi_setup_bootm(void)
+{
+	const struct rpi_ram_budget *budget = rpi_get_ram_budget();
+	phys_size_t ram = gd->ram_size;
+	phys_size_t size = budget->bootm_size;
+	ulong low = budget->bootm_low;
+
+	/* DRAM starts at 0 on these SoCs, so a size doubles as an address */
+	if (ram <= low) {
+		printf("RPI: only %llu MiB of RAM, keeping the default boot map\n",
+		       (u64)ram >> 20);
+		return;
+	}
+
+	if (low + size > ram)
+		size = ram - low;
+
+	env_set_hex("bootm_low", low);
+	env_set_hex("bootm_size", size);
+}
+
+/* Sysfs paths Android matches its block devices against, per boot medium */
+#define BCM2712_BOOT_DEVICES_SD		"soc@107c000000/1000fff000.mmc"
+#define BCM2712_BOOT_DEVICES_NVME	"axi/1000110000.pcie"
+#define BCM2712_BOOT_DEVICES_USB	"axi/1000120000.pcie"
+
+/* BCM2711 puts both USB and NVMe behind its single PCIe controller */
+#define BCM2711_BOOT_DEVICES_SD		"emmc2bus/fe340000.mmc"
+#define BCM2711_BOOT_DEVICES_PCIE	"scb/fd500000.pcie"
+
+/* Boot mode the firmware reports; the values match the BOOT_ORDER digits */
+enum rpi_boot_mode {
+	RPI_BOOT_MODE_SD		= 0x1,
+	RPI_BOOT_MODE_NETWORK		= 0x2,
+	RPI_BOOT_MODE_RPIBOOT		= 0x3,
+	RPI_BOOT_MODE_USB_MSD		= 0x4,
+	RPI_BOOT_MODE_BCM_USB_MSD	= 0x5,
+	RPI_BOOT_MODE_NVME		= 0x6,
+	RPI_BOOT_MODE_HTTP		= 0x7,
+};
+
+/* /chosen/bootloader is an undocumented firmware interface and may be absent */
+static int rpi_get_boot_mode(enum rpi_boot_mode *mode)
+{
+	const void *fdt = gd->fdt_blob;
+	const fdt32_t *prop;
+	int node, len;
+
+	node = fdt_path_offset(fdt, "/chosen/bootloader");
+	if (node < 0)
+		return -ENOENT;
+
+	prop = fdt_getprop(fdt, node, "boot-mode", &len);
+	if (!prop || len != sizeof(*prop))
+		return -ENOENT;
+
+	*mode = (enum rpi_boot_mode)fdt32_to_cpu(*prop);
+
+	return 0;
+}
+
+static int rpi_start_usb(void)
+{
+	if (!IS_ENABLED(CONFIG_USB))
+		return -ENOSYS;
+
+	return usb_init();
+}
+
+static int rpi_start_nvme(void)
+{
+	if (!IS_ENABLED(CONFIG_NVME))
+		return -ENOSYS;
+
+	return nvme_scan_namespace();
+}
+
+/* The media we can boot Android from, on the SoCs we have sysfs paths for */
+static const struct rpi_boot_medium {
+	enum rpi_boot_mode mode;
+	const char *devtype;
+	const char *path_2711;
+	const char *path_2712;
+	int (*start)(void);
+} rpi_boot_media[] = {
+	{
+		RPI_BOOT_MODE_SD, "mmc",
+		BCM2711_BOOT_DEVICES_SD, BCM2712_BOOT_DEVICES_SD, NULL
+	}, {
+		RPI_BOOT_MODE_USB_MSD, "usb",
+		BCM2711_BOOT_DEVICES_PCIE, BCM2712_BOOT_DEVICES_USB,
+		rpi_start_usb
+	}, {
+		RPI_BOOT_MODE_BCM_USB_MSD, "usb",
+		BCM2711_BOOT_DEVICES_PCIE, BCM2712_BOOT_DEVICES_USB,
+		rpi_start_usb
+	}, {
+		RPI_BOOT_MODE_NVME, "nvme",
+		BCM2711_BOOT_DEVICES_PCIE, BCM2712_BOOT_DEVICES_NVME,
+		rpi_start_nvme
+	},
+};
+
+static const struct rpi_boot_medium *rpi_get_boot_medium(enum rpi_boot_mode mode)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(rpi_boot_media); i++)
+		if (rpi_boot_media[i].mode == mode)
+			return &rpi_boot_media[i];
+
+	return NULL;
+}
+
+/* Android matches its own block devices against this path */
+static const char *rpi_get_boot_devices(const struct rpi_boot_medium *medium)
+{
+	if (of_machine_is_compatible("brcm,bcm2712"))
+		return medium->path_2712;
+
+	if (of_machine_is_compatible("brcm,bcm2711"))
+		return medium->path_2711;
+
+	return NULL;
+}
+
+/* Nothing enumerates PCIe for us: CONFIG_PCI_INIT_R is off on these boards */
+static void rpi_setup_boot_medium(const struct rpi_boot_medium *medium)
+{
+	int ret;
+
+	if (!medium->start)
+		return;
+
+	if (IS_ENABLED(CONFIG_PCI)) {
+		ret = pci_init();
+		if (ret)
+			printf("RPI: PCIe init failed (%d)\n", ret);
+	}
+
+	ret = medium->start();
+	if (ret)
+		printf("RPI: %s init failed (%d)\n", medium->devtype, ret);
+}
+
+/* Publish the device the firmware booted from, so bootandroid can use it */
+int board_late_init(void)
+{
+	const struct rpi_boot_medium *medium;
+	const char *boot_devices = NULL;
+	enum rpi_boot_mode mode;
+
+	if (rpi_get_boot_mode(&mode)) {
+		printf("RPI: no firmware boot-mode, assuming SD\n");
+		mode = RPI_BOOT_MODE_SD;
+	}
+
+	medium = rpi_get_boot_medium(mode);
+	if (medium)
+		boot_devices = rpi_get_boot_devices(medium);
+
+	/* Without a path Android cannot find its disks, so publish neither */
+	if (!boot_devices) {
+		printf("RPI: no Android boot device for boot-mode %u\n", mode);
+		medium = NULL;
+	} else {
+		rpi_setup_boot_medium(medium);
+	}
+
+	/* env_set(name, NULL) deletes: bootandroid then refuses to guess */
+	env_set("devtype", medium ? medium->devtype : NULL);
+	env_set("android_boot_devices", boot_devices);
+
+	rpi_setup_bootm();
+
+	/* Failing to publish a boot device must not stop the board */
+	return 0;
+}
+
 /*
  * If the firmware passed a device tree use it for U-Boot.
  */
@@ -635,6 +858,48 @@ void  update_fdt_from_fw(void *fdt, void *fw_fdt)
 	copy_property(fdt, fw_fdt, "/clocks/clk-uart", "clock-frequency");
 }
 
+/* We only resize a dynamically placed pool; a node with reg is left alone */
+static void rpi_setup_cma(void *blob)
+{
+	u32 size = rpi_get_ram_budget()->cma_size;
+	fdt32_t cells[2];
+	int node, size_cells, len;
+
+	node = fdt_path_offset(blob, "/reserved-memory/linux,cma");
+	if (node < 0) {
+		printf("RPI: no CMA node, keeping the firmware default\n");
+		return;
+	}
+
+	/* BCM2712 sizes the pool in two cells, BCM2711 in one */
+	size_cells = fdt_size_cells(blob, fdt_parent_offset(blob, node));
+	if (size_cells < 1 || size_cells > 2) {
+		printf("RPI: %d CMA size cells, keeping the firmware default\n",
+		       size_cells);
+		return;
+	}
+
+	/* Linux rejects the node unless size matches the parent's cell count */
+	if (!fdt_getprop(blob, node, "size", &len) ||
+	    len != size_cells * (int)sizeof(fdt32_t)) {
+		printf("RPI: unexpected CMA size property, keeping the firmware default\n");
+		return;
+	}
+
+	if (size_cells == 2) {
+		cells[0] = cpu_to_fdt32(0);
+		cells[1] = cpu_to_fdt32(size);
+	} else {
+		cells[0] = cpu_to_fdt32(size);
+	}
+
+	if (fdt_setprop(blob, node, "size", cells, len))
+		printf("RPI: could not resize CMA, keeping the firmware default\n");
+	else
+		debug("RPI: CMA %u MiB for %llu MiB of RAM\n",
+		      size >> 20, (u64)gd->ram_size >> 20);
+}
+
 int ft_board_setup(void *blob, struct bd_info *bd)
 {
 	int node;
@@ -657,6 +922,9 @@ int ft_board_setup(void *blob, struct bd_info *bd)
 	efi_add_memory_map(0, CONFIG_RPI_EFI_NR_SPIN_PAGES << EFI_PAGE_SHIFT,
 			   EFI_RESERVED_MEMORY_TYPE);
 #endif
+
+	/* After update_fdt_from_fw(), whose values rpi_setup_cma() overrides */
+	rpi_setup_cma(blob);
 
 	return 0;
 }
