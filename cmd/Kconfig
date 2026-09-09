@@ -526,6 +526,58 @@ config CMD_ABOOTIMG
 
 	  See doc/android/boot-image.rst for details.
 
+config CMD_BOOTANDROID
+	bool "bootandroid - boot an Android A/B image"
+	depends on AVB_VERIFY && ANDROID_AB && ANDROID_BOOT_IMAGE
+	# boot_run() is built with bootm
+	depends on CMD_BOOTM
+	# include/bcb.h is stubbed out without the bcb command
+	depends on CMD_BCB
+	# set_abootimg_addr() lives in cmd/abootimg.c
+	depends on CMD_ABOOTIMG
+	help
+	  Enables a "bootandroid" command that performs the whole Android boot
+	  flow in C: A/B slot selection, loading boot and vendor_boot, Android
+	  Verified Boot, assembling the kernel command line and handing the
+	  image to bootm. It replaces the equivalent U-Boot shell script.
+
+	  The board publishes the boot medium as ${devtype}. Without a
+	  ${devnum} the command searches every device on that medium for a
+	  "misc" partition and boots the first one it finds, so a removable
+	  medium can present the disk to boot from. AVB still refuses an image
+	  that is not signed for this device, but on a build without OP-TEE
+	  the rollback indexes live on that same disk. Set ${devnum} on a
+	  locked production build to pin the disk instead.
+
+	  A board with no bootable slot enters fastboot rather than dropping
+	  to the prompt, over USB, TCP or UDP, whichever is built.
+
+config BOOTANDROID_BOOT_ADDR
+	hex "Address to stage the Android boot image at"
+	depends on CMD_BOOTANDROID
+	default 0x10008000
+	help
+	  Where boot.img is read to before bootm relocates it. The window
+	  reaches up to the vendor_boot address, and the "android_boot_addr"
+	  environment variable overrides it at runtime.
+
+config BOOTANDROID_VENDOR_BOOT_ADDR
+	hex "Address to stage the Android vendor_boot image at"
+	depends on CMD_BOOTANDROID
+	default 0x13008000
+	help
+	  Where vendor_boot.img is read to. It must sit above the boot image,
+	  and the "android_vendor_boot_addr" environment variable overrides it
+	  at runtime.
+
+config BOOTANDROID_VENDOR_BOOT_MAX
+	hex "Largest Android vendor_boot image to accept"
+	depends on CMD_BOOTANDROID
+	default 0x4000000
+	help
+	  A vendor_boot image whose header claims more than this is refused,
+	  and so is a window that does not fit in the installed RAM.
+
 config CMD_CEDIT
 	bool "cedit - Configuration editor"
 	depends on CEDIT
