@@ -1,4 +1,4 @@
-#include <configs/rpi_4_aosp_defconfig>
+#include <configs/rpi_aosp_debug_defconfig>
 
 #
 # No shell
