@@ -636,6 +636,10 @@ static void rpi_setup_bootm(void)
 #define BCM2712_BOOT_DEVICES_NVME	"axi/1000110000.pcie"
 #define BCM2712_BOOT_DEVICES_USB	"axi/1000120000.pcie"
 
+/* BCM2837 has no NVMe and its USB is the on-SoC DWC2 */
+#define BCM2837_BOOT_DEVICES_SD		"soc/3f202000.mmc"
+#define BCM2837_BOOT_DEVICES_USB	"soc/3f980000.usb"
+
 /* BCM2711 puts both USB and NVMe behind its single PCIe controller */
 #define BCM2711_BOOT_DEVICES_SD		"emmc2bus/fe340000.mmc"
 #define BCM2711_BOOT_DEVICES_PCIE	"scb/fd500000.pcie"
@@ -691,23 +695,24 @@ static int rpi_start_nvme(void)
 static const struct rpi_boot_medium {
 	enum rpi_boot_mode mode;
 	const char *devtype;
+	const char *path_2837;
 	const char *path_2711;
 	const char *path_2712;
 	int (*start)(void);
 } rpi_boot_media[] = {
 	{
-		RPI_BOOT_MODE_SD, "mmc",
+		RPI_BOOT_MODE_SD, "mmc", BCM2837_BOOT_DEVICES_SD,
 		BCM2711_BOOT_DEVICES_SD, BCM2712_BOOT_DEVICES_SD, NULL
 	}, {
-		RPI_BOOT_MODE_USB_MSD, "usb",
+		RPI_BOOT_MODE_USB_MSD, "usb", BCM2837_BOOT_DEVICES_USB,
 		BCM2711_BOOT_DEVICES_PCIE, BCM2712_BOOT_DEVICES_USB,
 		rpi_start_usb
 	}, {
-		RPI_BOOT_MODE_BCM_USB_MSD, "usb",
+		RPI_BOOT_MODE_BCM_USB_MSD, "usb", BCM2837_BOOT_DEVICES_USB,
 		BCM2711_BOOT_DEVICES_PCIE, BCM2712_BOOT_DEVICES_USB,
 		rpi_start_usb
 	}, {
-		RPI_BOOT_MODE_NVME, "nvme",
+		RPI_BOOT_MODE_NVME, "nvme", NULL,
 		BCM2711_BOOT_DEVICES_PCIE, BCM2712_BOOT_DEVICES_NVME,
 		rpi_start_nvme
 	},
@@ -733,6 +738,9 @@ static const char *rpi_get_boot_devices(const struct rpi_boot_medium *medium)
 	if (of_machine_is_compatible("brcm,bcm2711"))
 		return medium->path_2711;
 
+	if (of_machine_is_compatible("brcm,bcm2837"))
+		return medium->path_2837;
+
 	return NULL;
 }
 
@@ -744,7 +752,8 @@ static void rpi_setup_boot_medium(const struct rpi_boot_medium *medium)
 	if (!medium->start)
 		return;
 
-	if (IS_ENABLED(CONFIG_PCI)) {
+	/* BCM2837 has no PCIe, its USB sits directly on the SoC */
+	if (IS_ENABLED(CONFIG_PCI) && !of_machine_is_compatible("brcm,bcm2837")) {
 		ret = pci_init();
 		if (ret)
 			printf("RPI: PCIe init failed (%d)\n", ret);
