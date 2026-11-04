@@ -13,7 +13,24 @@
 #include <tee.h>
 #include <tee/optee_ta_avb.h>
 
-static const unsigned char avb_root_pub[1032] = {
+#define AVB_KEY_SIZE	1032
+#define AVB_KEY_SLOTS	2
+
+/*
+ * Trusted vbmeta keys, patched in u-boot.bin after the build: found by the
+ * marker, an all-zero slot is empty. Volatile, so the build-time contents
+ * are not folded into the check.
+ */
+struct avb_trusted_keys {
+	char marker[16];
+	u8 keys[AVB_KEY_SLOTS][AVB_KEY_SIZE];
+};
+
+static const volatile struct avb_trusted_keys avb_trusted_keys __used = {
+	.marker = "AVB_TRUST_KEYS",
+	.keys = {
+	/* Slot 0: AOSP test key, external/avb/test/data/testkey_rsa4096.pem */
+	{
 	0x0, 0x0, 0x10, 0x0, 0x55, 0xd9, 0x4, 0xad, 0xd8, 0x4,
 	0xaf, 0xe3, 0xd3, 0x84, 0x6c, 0x7e, 0xd, 0x89, 0x3d, 0xc2,
 	0x8c, 0xd3, 0x12, 0x55, 0xe9, 0x62, 0xc9, 0xf1, 0xf, 0x5e,
@@ -118,7 +135,27 @@ static const unsigned char avb_root_pub[1032] = {
 	0x1d, 0x70, 0x4b, 0x6c, 0x6, 0x74, 0xec, 0xb5, 0x2e, 0x77,
 	0xe1, 0x74, 0xa1, 0xa3, 0x99, 0xa0, 0x85, 0x9e, 0xf1, 0xac,
 	0xd8, 0x7e,
+	},
+	/* Slot 1: empty, patched after the build */
+	{ 0 },
+	},
 };
+
+static bool avb_key_slot_matches(const volatile u8 *slot, const u8 *key)
+{
+	bool empty = true;
+	bool match = true;
+	int i;
+
+	for (i = 0; i < AVB_KEY_SIZE; i++) {
+		if (slot[i])
+			empty = false;
+		if (slot[i] != key[i])
+			match = false;
+	}
+
+	return !empty && match;
+}
 
 const char *str_avb_io_error(AvbIOResult res)
 {
@@ -681,15 +718,20 @@ static AvbIOResult validate_vbmeta_public_key(AvbOps *ops,
 					      public_key_metadata_length,
 					      bool *out_key_is_trusted)
 {
+	int i;
+
 	if (!public_key_length || !public_key_data || !out_key_is_trusted)
 		return AVB_IO_RESULT_ERROR_IO;
 
 	*out_key_is_trusted = false;
-	if (public_key_length != sizeof(avb_root_pub))
+	if (public_key_length != AVB_KEY_SIZE)
 		return AVB_IO_RESULT_ERROR_IO;
 
-	if (memcmp(avb_root_pub, public_key_data, public_key_length) == 0)
-		*out_key_is_trusted = true;
+	for (i = 0; i < AVB_KEY_SLOTS; i++) {
+		if (avb_key_slot_matches(avb_trusted_keys.keys[i],
+					 public_key_data))
+			*out_key_is_trusted = true;
+	}
 
 	return AVB_IO_RESULT_OK;
 }
