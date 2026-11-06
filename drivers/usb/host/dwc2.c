@@ -724,13 +724,14 @@ static int dwc_otg_submit_rh_msg(struct dwc2_priv *priv, struct usb_device *dev,
 	return stat;
 }
 
-int wait_for_chhltd(struct dwc2_hc_regs *hc_regs, u32 *sub, u8 *toggle)
+static int wait_for_chhltd(struct dwc2_hc_regs *hc_regs, u32 *sub, u8 *toggle,
+			   unsigned int timeout_ms)
 {
 	int ret;
 	u32 hcint, hctsiz;
 
 	ret = wait_for_bit_le32(&hc_regs->hcint, HCINTMSK_CHHLTD, true,
-				2000, false);
+				timeout_ms, false);
 	if (ret)
 		return ret;
 
@@ -761,7 +762,8 @@ static int dwc2_eptype[] = {
 
 static int transfer_chunk(struct dwc2_hc_regs *hc_regs, void *aligned_buffer,
 			  u8 *pid, int in, void *buffer, int num_packets,
-			  int xfer_len, int *actual_len, int odd_frame)
+			  int xfer_len, int *actual_len, int odd_frame,
+			  unsigned int timeout_ms)
 {
 	int ret = 0;
 	u32 sub;
@@ -802,7 +804,7 @@ static int transfer_chunk(struct dwc2_hc_regs *hc_regs, void *aligned_buffer,
 			FIELD_PREP(HCCHAR_ODDFRM, odd_frame) |
 			HCCHAR_CHENA);
 
-	ret = wait_for_chhltd(hc_regs, &sub, pid);
+	ret = wait_for_chhltd(hc_regs, &sub, pid, timeout_ms);
 	if (ret == -ETIMEDOUT) {
 		/* A channel left enabled corrupts every later transfer on it */
 		setbits_le32(&hc_regs->hcchar, HCCHAR_CHENA | HCCHAR_CHDIS);
@@ -847,6 +849,10 @@ int chunk_msg(struct dwc2_priv *priv, struct usb_device *dev,
 	int stop_transfer = 0;
 	u32 max_xfer_len;
 	int ssplit_frame_num = 0;
+	/* A stick busy after a flash NAKs a write for many seconds, the DMA engine retries until it accepts */
+	unsigned int timeout_ms = eptype == HCCHAR_EPTYPE_BULK &&
+		dev->config.if_desc[0].desc.bInterfaceClass == USB_CLASS_MASS_STORAGE ?
+		30000 : 2000;
 
 	debug("%s: msg: pipe %lx pid %d in %d len %d\n", __func__, pipe, *pid,
 	      in, len);
@@ -908,7 +914,8 @@ int chunk_msg(struct dwc2_priv *priv, struct usb_device *dev,
 
 		ret = transfer_chunk(hc_regs, priv->aligned_buffer, pid,
 				     in, (char *)buffer + done, num_packets,
-				     xfer_len, &actual_len, odd_frame);
+				     xfer_len, &actual_len, odd_frame,
+				     timeout_ms);
 
 		hcint = readl(&hc_regs->hcint);
 		if (complete_split) {
