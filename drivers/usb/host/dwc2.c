@@ -803,6 +803,14 @@ static int transfer_chunk(struct dwc2_hc_regs *hc_regs, void *aligned_buffer,
 			HCCHAR_CHENA);
 
 	ret = wait_for_chhltd(hc_regs, &sub, pid);
+	if (ret == -ETIMEDOUT) {
+		/* A channel left enabled corrupts every later transfer on it */
+		setbits_le32(&hc_regs->hcchar, HCCHAR_CHENA | HCCHAR_CHDIS);
+		if (wait_for_bit_le32(&hc_regs->hcchar, HCCHAR_CHENA, false,
+				      100, false))
+			log_err("dwc2: can't halt the channel after a timeout\n");
+		writel(0x3fff, &hc_regs->hcint);
+	}
 	if (ret < 0)
 		return ret;
 
@@ -972,6 +980,7 @@ static int _submit_control_msg(struct dwc2_priv *priv, struct usb_device *dev,
 			       struct devrequest *setup)
 {
 	int devnum = usb_pipedevice(pipe);
+	unsigned long deadline;
 	int ret, act_len;
 	u8 pid;
 	/* For CONTROL endpoint pid should start with DATA1 */
@@ -984,13 +993,16 @@ static int _submit_control_msg(struct dwc2_priv *priv, struct usb_device *dev,
 					     setup);
 	}
 
+	/* A device that NAKs forever must not hang the caller */
+	deadline = get_timer(0) + USB_TIMEOUT_MS(pipe);
+
 	/* SETUP stage */
 	pid = DWC2_HC_PID_SETUP;
 	do {
 		ret = chunk_msg(priv, dev, pipe, &pid, 0, setup, 8);
-	} while (ret == -EAGAIN);
+	} while (ret == -EAGAIN && get_timer(0) < deadline);
 	if (ret)
-		return ret;
+		goto out;
 
 	/* DATA stage */
 	act_len = 0;
@@ -1002,9 +1014,9 @@ static int _submit_control_msg(struct dwc2_priv *priv, struct usb_device *dev,
 			act_len += dev->act_len;
 			buffer += dev->act_len;
 			len -= dev->act_len;
-		} while (ret == -EAGAIN);
+		} while (ret == -EAGAIN && get_timer(0) < deadline);
 		if (ret)
-			return ret;
+			goto out;
 		status_direction = usb_pipeout(pipe);
 	} else {
 		/* No-data CONTROL always ends with an IN transaction */
@@ -1016,7 +1028,13 @@ static int _submit_control_msg(struct dwc2_priv *priv, struct usb_device *dev,
 	do {
 		ret = chunk_msg(priv, dev, pipe, &pid, status_direction,
 				priv->status_buffer, 0);
-	} while (ret == -EAGAIN);
+	} while (ret == -EAGAIN && get_timer(0) < deadline);
+out:
+	if (ret == -EAGAIN) {
+		log_err("dwc2: control transfer to device %d still NAKed after %d ms\n",
+			devnum, USB_TIMEOUT_MS(pipe));
+		return -ETIMEDOUT;
+	}
 	if (ret)
 		return ret;
 
